@@ -78,7 +78,7 @@ projects:
         password: xxxxxx
         database: xxx
         port: 3306
-    pre:
+    pre:  # 预发环境
       host: https://pre-xxxxxx.com
       mysql:
         host: xxxxxxxxxx
@@ -98,7 +98,7 @@ projects:
           loginType: 3
           authorizationClientType: 2
           loginVersion: 2
-    online:
+    online: # 生产环境
       host: https://xxxxxx.com
       mysql:
         host: xxxxxxxxxx
