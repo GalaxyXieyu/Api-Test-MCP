@@ -28,7 +28,7 @@ projects:
           authorizationClientType: 0
           loginType: 3
           loginVersion: 2
-    pre:
+    pre:  # 预发环境
       host: https://pre-xxxxxx.com
       mysql:
         host: xxxxxxxxxx
@@ -48,7 +48,7 @@ projects:
           loginType: 3
           authorizationClientType: 0
           loginVersion: 2
-    online:
+    online: # 生产环境
       host: https://xxxxxx.com
       mysql:
         host: xxxxxxxxxx
