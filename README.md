@@ -152,13 +152,13 @@ super_api_auto_test/
 │   │   │   ├── ... (more generated tests)
 ├── test_cases/
 │   ├── project1/
-│   │   ├── test_case_1.yaml
-│   │   ├── test_case_2.yaml
+│   │   ├── test_case_1.py
+│   │   ├── test_case_2.py
 │   │   ├── ... (more test case files)
 │   ├── project2/
 │   │   ├── module
-│   │   │   ├── test_case_3.yaml
-│   │   │   ├── test_case_4.yaml
+│   │   │   ├── test_case_3.py
+│   │   │   ├── test_case_4.py
 │   │   │   ├── ... (more test case files)
 ├── conftest.py
 ├── requirements.txt
