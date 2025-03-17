@@ -1,0 +1,72 @@
+testcase:
+  name: goods_list_and_statusTotals
+  description: 设备列表页接口
+  allure:
+    epic: B端APP
+    feature: 设备管理
+    story: 设备列表
+
+  steps:
+    - id: goods_getGoodsCountPercentVOList
+      description: 店铺已绑定设备类型占比
+      project: merchant
+      path: /goods/getGoodsCountPercentVOList
+      method: POST
+      headers:
+        Content-Type: 'application/json'
+        Authorization: '{{merchant.token}}'
+      data:
+        authorizationClientType: 3
+      assert:
+        - type: equal
+          field: code
+          expected: 0
+        - type: equal
+          field: message
+          expected: success
+        - type: is not None
+          field: data[0].categoryId
+
+    - id: goods_list
+      description: 设备列表
+      project: merchant
+      path: /goods/list
+      method: GET
+      headers:
+        Content-Type: 'application/json'
+        Authorization: '{{merchant.token}}'
+      data:
+        categoryIdList: 10,11,12
+        authorizationClientType: 3
+        page: 1
+        pageNum: 1
+        pageSize: 20
+      assert:
+        - type: equal
+          field: code
+          expected: 0
+        - type: equal
+          field: message
+          expected: success
+
+    - id: goods_statusTotals
+      description: 设备状态汇总
+      project: merchant
+      path: /goods/statusTotals
+      method: GET
+      headers:
+        Content-Type: 'application/json'
+        Authorization: '{{merchant.token}}'
+      data:
+        categoryIdList: 10,11,12
+        authorizationClientType: 3
+        page: 1
+        pageNum: 1
+        pageSize: 20
+      assert:
+        - type: equal
+          field: code
+          expected: 0
+        - type: equal
+          field: message
+          expected: success

@@ -1,0 +1,9 @@
+allure_python_commons==2.9.45
+DingtalkChatbot==1.5.7
+loguru==0.4.1
+mysql-connector-python==8.0.33
+pycryptodome==3.9.9
+pytest==6.2.5
+PyYAML==6.0.1
+requests==2.24.0
+pytest-html==2.1.1

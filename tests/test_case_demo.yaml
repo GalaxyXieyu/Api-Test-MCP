@@ -1,0 +1,96 @@
+testcase:
+  name: case_demo # 测试用例文件名，必填，尽量与文件名(除掉test_)保持一致。
+  description: 新增xxx  # 用例说明
+  allure: # allure报告定制参数
+    epic: B端APP
+    feature: 设备管理
+    story: 新增xxx
+
+  steps:
+    - id: device_bind # step id，每个id对应一个接口请求，不能重复命名
+      description: 新增xxx  # 接口说明
+      project: merchant # 场景用例中必须填，指定该接口的project，才能获取到对应的token、host、mysql信息等
+      path: '/device/bind?platform=Android'
+      method: POST
+      headers:
+        Content-Type: 'application/json'
+        Authorization: '{{merchant.token}}' # 从全局变量中获取merchant项目登录后获取的token值。格式为'{{表达式}}'，表达式为jsonpath规则，注意：需要用引号''，否则会读取报错
+      data:
+        code: deb45899-957c-xxxx-xxxx-710972b35515
+        shopCategoryId: 6
+        codeStr: 'https://h5.xxxx.com/scan?N=deb45899-957c-xxxx-xxxx-710972b35515'
+        positionId: 427
+        name: 新增xxx
+        imei: '865403062650000'
+        spuId: 01
+        shopId: 001
+        items: []
+        floorCode: '1'
+      assert:
+        - type: equal
+          field: code
+          expected: 0
+        - type: is not None
+          field: data.id
+        - type: equal
+          field: message
+          expected: success
+
+    - id: goods_delete
+      description: 删除xxx
+      project: merchant
+      path: '/goods/delete?platform=Android'
+      method: POST
+      headers:
+        Content-Type: 'application/json'
+        Authorization: '{{merchant.token}}'
+      data:
+        goodsId: '{{device_bind.data.id}}'  # 从step id为device_bind的response内容中获取data.id的值, 格式为'{{表达式}}'，表达式为jsonpath规则。
+        authorizationClientType: 3
+      assert: # 断言
+        - type: equal
+          field: status_code
+          expected: 200
+        - type: equal
+          field: data.code
+          expected: '{{step1.data.code}}' # 变量表达式，同上
+        - type: not None
+          field: data.code  # 会从该接口返回的response中查找data.code
+        - type: in
+          field: data.deviceInfo.id
+          container: [1001, 1002, 1003]
+        - type: mysql_query # mysql查询
+          query: SELECT id FROM users WHERE name='John'
+          expected: 12345
+        - type: mysql_query_exists  # 断言数据库中数据是否存在
+          query: SELECT * FROM users WHERE active = 1
+        - type: mysql_query_true  # 断言数据库中数据是否为True
+          query: SELECT EXISTS(SELECT 1 FROM users WHERE id = 1)
+
+    teardowns:  # 后置操作
+      - id: device_unbind
+        description: 解绑xxx
+        operation_type: api # 用于标记teardown的类型，api为接口请求，db为数据库操作
+        project: plateform
+        path: '/device/unbind'
+        method: POST
+        headers:
+          Content-Type: 'application/json'
+          Authorization: '{{merchant.token}}'
+        data:
+          deviceId: '{{device_bind.data.id}}'
+        assert: # 对清理操作同样可以进行断言（可选）
+          - type: equal
+            field: code
+            expected: 0
+
+      - id: clear_database
+        description: 数据库清理
+        operation_type: db  # 标记为数据库操作
+        query: DELETE FROM device WHERE id = '{{device_bind.data.id}}'
+
+      - id: check_database
+        description: 数据库查询
+        operation_type: db
+        query: SELECT FROM device WHERE id = '{{device_bind.data.id}}'
+        expected: id
