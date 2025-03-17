@@ -165,7 +165,7 @@ super_api_auto_test/
 └── README.md
 ```
 
-#### 4. 目录结构说明：
+#### 4. 目录结构说明
 
 * config.yaml：配置文件，存储项目信息（环境、host、mysql、登录信息等）、DingTalk、WeChat Work、Feishu等配置信息。
 * auth.py：认证模块，测试项目如果需要登录获取 token，则在本模块定义登录函数。
