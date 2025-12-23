@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Test reports
+html-reports/
+allure-results/
+.pytest_cache/
+.coverage
+
+# Environment
+.env
+.venv
+venv/
+ENV/
+
+# Temporary files
+*.tmp
+*.bak
+pip
+
