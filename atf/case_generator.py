@@ -67,7 +67,7 @@ class CaseGenerator:
 		# 移除最后一个组件（文件名）
 		if path_components:
 			path_components.pop()  # 移除最后一个元素
-		directory_path = os.path.join(*path_components)	# 重新组合路径
+		directory_path = os.path.join(*path_components) if path_components else ""
 		directory_path = directory_path.rstrip(os.sep)	# 确保路径不以斜杠结尾
 		
 		

@@ -1,0 +1,19 @@
+testcase:
+  name: report_v2_list_reports_by_type_construct
+  description: 按报告类型筛选报告列表-建设报告
+  steps:
+  - id: list_construct_reports
+    path: /api/v2/report/reports
+    method: GET
+    params:
+      page: 1
+      page_size: 20
+      project_code: 2017-440300-81-01-103266
+      report_type: construct
+    assert:
+    - type: status_code
+      expected: 200
+    - type: exists
+      field: total
+    - type: exists
+      field: items

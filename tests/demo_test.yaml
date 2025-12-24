@@ -1,0 +1,6 @@
+testcase:
+  name: demo
+  steps:
+  - id: step1
+    path: /api/test
+    method: GET

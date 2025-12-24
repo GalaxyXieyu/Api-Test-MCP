@@ -1,0 +1,19 @@
+testcase:
+  name: report_v2_list_reports_by_type_prep
+  description: 按报告类型筛选报告列表-前期报告
+  steps:
+  - id: list_prep_reports
+    path: /api/v2/report/reports
+    method: GET
+    params:
+      page: 1
+      page_size: 20
+      project_code: 2306-440307-04-02-509701
+      report_type: prep
+    assert:
+    - type: status_code
+      expected: 200
+    - type: exists
+      field: total
+    - type: exists
+      field: items

@@ -1,0 +1,15 @@
+testcase:
+  name: device_bind
+  description: 绑定设备
+  steps:
+  - id: bind_device
+    path: /api/device/bind
+    method: POST
+    headers:
+      Content-Type: application/json
+    data:
+      sn: SN-001
+    assert:
+    - type: equal
+      field: code
+      expected: 0

@@ -1,0 +1,15 @@
+testcase:
+  name: report_v2_get_types
+  description: 获取支持的报告类型列表
+  steps:
+  - id: get_report_types
+    path: /api/v2/report/types
+    method: GET
+    assert:
+    - type: status_code
+      expected: 200
+    - type: exists
+      field: items
+    - type: type
+      field: items
+      expected: list

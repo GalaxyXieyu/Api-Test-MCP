@@ -75,6 +75,17 @@ class AssertHandler:
                 self._validate_mysql_query_exists(query)
             elif assert_type == 'mysql_query_true':
                 self._validate_mysql_query_true(query)
+            # SSE 断言类型
+            elif assert_type == 'sse_event_count':
+                self._validate_sse_event_count(response, assertion)
+            elif assert_type == 'sse_contains':
+                self._validate_sse_contains(response, assertion)
+            elif assert_type == 'sse_event_exists':
+                self._validate_sse_event_exists(response, assertion)
+            elif assert_type == 'sse_event_field':
+                self._validate_sse_event_field(response, assertion)
+            elif assert_type == 'sse_last_event':
+                self._validate_sse_last_event(response, assertion)
             else:
                 raise ValueError(f"未知的断言类型: {assert_type}")
         
@@ -155,6 +166,108 @@ class AssertHandler:
                 raise
             cursor.close()
             return result[0] if result else None
+
+    # ==================== SSE 断言方法 ====================
+
+    def _validate_sse_event_count(self, response, assertion):
+        """
+        验证 SSE 事件数量
+        :param response: SSEResponse 对象
+        :param assertion: 断言配置，支持 expected (精确), min, max
+        """
+        count = response.event_count
+        expected = assertion.get('expected')
+        min_count = assertion.get('min')
+        max_count = assertion.get('max')
+
+        if expected is not None:
+            assert count == expected, f"SSE 事件数量期望 {expected}，实际 {count}"
+        if min_count is not None:
+            assert count >= min_count, f"SSE 事件数量至少 {min_count}，实际 {count}"
+        if max_count is not None:
+            assert count <= max_count, f"SSE 事件数量最多 {max_count}，实际 {count}"
+        log.info(f"SSE 事件数量断言通过: {count}")
+
+    def _validate_sse_contains(self, response, assertion):
+        """
+        验证 SSE 事件中是否包含指定文本
+        :param response: SSEResponse 对象
+        :param assertion: 断言配置，expected 为要查找的文本
+        """
+        expected = assertion.get('expected')
+        assert response.contains(expected), f"SSE 事件中未找到文本: {expected}"
+        log.info(f"SSE 包含断言通过: {expected}")
+
+    def _validate_sse_event_exists(self, response, assertion):
+        """
+        验证是否存在满足条件的 SSE 事件
+        :param response: SSEResponse 对象
+        :param assertion: 断言配置，支持 event_type, data_contains 等条件
+        """
+        conditions = {}
+        if 'event_type' in assertion:
+            conditions['event_type'] = assertion['event_type']
+        if 'data_contains' in assertion:
+            conditions['data_contains'] = assertion['data_contains']
+
+        event = response.find_event(**conditions)
+        assert event is not None, f"未找到满足条件的 SSE 事件: {conditions}"
+        log.info(f"SSE 事件存在断言通过: {conditions}")
+
+    def _validate_sse_event_field(self, response, assertion):
+        """
+        验证指定索引的 SSE 事件的字段值
+        :param response: SSEResponse 对象
+        :param assertion: 断言配置，index 为事件索引，field 为字段路径，expected 为期望值
+        """
+        index = assertion.get('index', 0)
+        field = assertion.get('field')
+        expected = assertion.get('expected')
+
+        event = response.get_event(index)
+        assert event is not None, f"SSE 事件索引 {index} 不存在"
+
+        # 从 event.data 中获取字段值
+        value = self._get_nested_value(event.get('data', {}), field)
+        assert value == expected, f"SSE 事件[{index}].{field} 期望 {expected}，实际 {value}"
+        log.info(f"SSE 事件字段断言通过: [{index}].{field} = {expected}")
+
+    def _validate_sse_last_event(self, response, assertion):
+        """
+        验证最后一个 SSE 事件
+        :param response: SSEResponse 对象
+        :param assertion: 断言配置，支持 event_type, data_contains, field + expected
+        """
+        event = response.get_event(-1)
+        assert event is not None, "没有收到任何 SSE 事件"
+
+        if 'event_type' in assertion:
+            assert event.get('event') == assertion['event_type'], \
+                f"最后事件类型期望 {assertion['event_type']}，实际 {event.get('event')}"
+
+        if 'data_contains' in assertion:
+            assert assertion['data_contains'] in str(event.get('data', '')), \
+                f"最后事件未包含: {assertion['data_contains']}"
+
+        if 'field' in assertion and 'expected' in assertion:
+            value = self._get_nested_value(event.get('data', {}), assertion['field'])
+            assert value == assertion['expected'], \
+                f"最后事件 {assertion['field']} 期望 {assertion['expected']}，实际 {value}"
+
+        log.info(f"SSE 最后事件断言通过")
+
+    def _get_nested_value(self, data, field_path):
+        """从嵌套字典中获取值"""
+        if not field_path or not isinstance(data, dict):
+            return data
+        keys = field_path.split('.')
+        value = data
+        for key in keys:
+            if isinstance(value, dict):
+                value = value.get(key)
+            else:
+                return None
+        return value
         
 if __name__ == '__main__':
     class MockResponse:

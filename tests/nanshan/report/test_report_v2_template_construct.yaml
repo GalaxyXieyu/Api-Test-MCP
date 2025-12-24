@@ -1,0 +1,14 @@
+testcase:
+  name: report_v2_get_construct_template
+  description: 获取建设报告模板
+  steps:
+  - id: get_construct_template
+    path: /api/v2/report/2017-440300-81-01-103266/template
+    method: GET
+    params:
+      report_type: construct
+    assert:
+    - type: status_code
+      expected: 200
+    - type: exists
+      field: template

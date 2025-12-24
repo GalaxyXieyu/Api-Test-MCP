@@ -1,0 +1,25 @@
+testcase:
+  name: report_v2_submit_monthly_resume
+  description: 提交月报生成任务(resume模式)
+  steps:
+  - id: submit_monthly_resume
+    path: /api/v2/report/submit
+    method: POST
+    headers:
+      Content-Type: application/json
+    data:
+      create_source: manual
+      mode: resume
+      month: '202412'
+      report_type: monthly
+    assert:
+    - type: status_code
+      expected: 200
+    - type: exists
+      field: report_id
+    - type: equal
+      field: status
+      expected: accepted
+    - type: equal
+      field: report_type
+      expected: monthly

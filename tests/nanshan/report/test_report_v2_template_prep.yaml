@@ -1,0 +1,14 @@
+testcase:
+  name: report_v2_get_prep_template
+  description: 获取前期报告模板
+  steps:
+  - id: get_prep_template
+    path: /api/v2/report/2306-440307-04-02-509701/template
+    method: GET
+    params:
+      report_type: prep
+    assert:
+    - type: status_code
+      expected: 200
+    - type: exists
+      field: template

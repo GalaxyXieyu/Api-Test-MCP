@@ -1,0 +1,28 @@
+testcase:
+  name: report_v2_submit_prep_group
+  description: 提交组合前期报告生成任务
+  steps:
+  - id: submit_prep_group
+    path: /api/v2/report/submit
+    method: POST
+    headers:
+      Content-Type: application/json
+    data:
+      create_source: manual
+      mode: resume
+      project_codes:
+      - 2306-440307-04-02-509701
+      - 2306-440307-04-05-608184
+      report_name: 组合前期报告（示例）
+      report_type: prep
+    assert:
+    - type: status_code
+      expected: 200
+    - type: exists
+      field: report_id
+    - type: equal
+      field: status
+      expected: accepted
+    - type: equal
+      field: report_type
+      expected: prep

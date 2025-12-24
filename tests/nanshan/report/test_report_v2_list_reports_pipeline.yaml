@@ -1,0 +1,18 @@
+testcase:
+  name: report_v2_list_reports_pipeline
+  description: 按创建来源筛选-pipeline自动创建
+  steps:
+  - id: list_pipeline_reports
+    path: /api/v2/report/reports
+    method: GET
+    params:
+      create_source: pipeline
+      page: 1
+      page_size: 20
+    assert:
+    - type: status_code
+      expected: 200
+    - type: exists
+      field: total
+    - type: exists
+      field: items
