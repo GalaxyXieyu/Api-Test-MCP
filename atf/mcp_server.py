@@ -221,6 +221,7 @@ class TestcaseModel(BaseModel):
 
     name: str
     description: str | None = None
+    host: str | None = None  # 可选的测试服务地址
     allure: AllureModel | None = None
     steps: list[StepModel]
     teardowns: list[TeardownModel] | None = None
@@ -799,6 +800,21 @@ def write_unittest(
 # ==================== 测试执行 MCP 工具 ====================
 
 
+def _get_python_path(repo_root: Path) -> str:
+    """获取项目 venv 的 Python 路径"""
+    # 优先使用 uv run
+    if (repo_root / "pyproject.toml").exists():
+        return "uv"
+
+    # 查找 venv 路径
+    venv_python = repo_root / ".venv" / "bin" / "python"
+    if venv_python.exists():
+        return str(venv_python)
+
+    # 回退到系统 Python
+    return sys.executable
+
+
 def _run_pytest(pytest_path: str, repo_root: Path) -> dict:
     """执行 pytest 并返回结果"""
     start_time = time.time()
@@ -812,8 +828,15 @@ def _run_pytest(pytest_path: str, repo_root: Path) -> dict:
     }
 
     try:
+        # 获取正确的 Python 路径
+        python_path = _get_python_path(repo_root)
+
         # 构建 pytest 命令
-        cmd = [sys.executable, "-m", "pytest", pytest_path, "-v", "--tb=short", "-q"]
+        if python_path == "uv":
+            cmd = ["uv", "run", "pytest", pytest_path, "-v", "--tb=short", "-q"]
+        else:
+            cmd = [python_path, "-m", "pytest", pytest_path, "-v", "--tb=short", "-q"]
+
         log.info(f"执行测试命令: {' '.join(cmd)}")
 
         process = subprocess.Popen(

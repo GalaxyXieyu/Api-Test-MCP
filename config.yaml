@@ -135,6 +135,11 @@ projects:
       - user
       - merchant
 
+  demo_fastapi:
+    test:
+      host: http://localhost:8000
+      is_need_login: False
+
 notifications:
   dingtalk: # 钉钉机器人发送消息已调通
     webhook: "https://oapi.dingtalk.com/robot/send?access_token=your_dingtalk_assess_token"

@@ -137,6 +137,11 @@ class CaseGenerator:
 			f.write(f"        cls.session_vars = {{}}\n")
 			f.write(f"        cls.global_vars = Globals.get_data()\n")  # 获取全局变量
 			# f.write(f"        cls.db_config = cls.global_vars.get('mysql')\n")	# 获取数据库配置
+
+			# 处理 testcase 级别的 host 配置
+			testcase_host = test_data.get('host')
+			if testcase_host:
+				f.write(f"        cls.testcase_host = '{testcase_host}'\n")
 			
 			# 创建VariableResolver实例并保存在类变量中
 			f.write(f"        cls.VR = VariableResolver(global_vars=cls.global_vars, session_vars=cls.session_vars)\n")
@@ -159,15 +164,20 @@ class CaseGenerator:
 				f.write(f"        # Step: {step_id}\n")
 				f.write(f"        log.info(f'开始执行 step: {step_id}')\n")
 				f.write(f"        {step_id} = self.steps_dict.get('{step_id}')\n")
-				
-				if step_project:
+
+				# 如果 testcase 有 host 配置，使用它；否则使用 project 配置
+				if testcase_host:
+					f.write(f"        step_host = self.testcase_host\n")
+				elif step_project:
 					f.write(f"        project_config = self.global_vars.get('{step_project}')\n")
+					f.write(f"        step_host = project_config['host'] if project_config else ''\n")
 				else:
 					f.write(f"        project_config = self.global_vars.get('{project_name}')\n")
-				
+					f.write(f"        step_host = project_config['host'] if project_config else ''\n")
+
 				f.write(f"        response = RequestHandler.send_request(\n")
 				f.write(f"            method={step_id}['method'],\n")
-				f.write(f"            url=project_config['host'] + self.VR.process_data({step_id}['path']),\n")
+				f.write(f"            url=step_host + self.VR.process_data({step_id}['path']),\n")
 				f.write(f"            headers=self.VR.process_data({step_id}.get('headers')),\n")
 				f.write(f"            data=self.VR.process_data({step_id}.get('data')),\n")
 				f.write(f"            params=self.VR.process_data({step_id}.get('params')),\n")
@@ -175,9 +185,13 @@ class CaseGenerator:
 				f.write(f"        )\n")
 				f.write(f"        log.info(f'{step_id} 请求结果为：{{response}}')\n")
 				f.write(f"        self.session_vars['{step_id}'] = response\n")
-				
+
 				if 'assert' in step:
-					f.write(f"        db_config = project_config.get('mysql')\n")
+					# 只有在真正使用 project_config 时才获取 db_config
+					if not testcase_host:
+						f.write(f"        db_config = project_config.get('mysql')\n")
+					else:
+						f.write(f"        db_config = None\n")
 					f.write(f"        AssertHandler().handle_assertion(\n")
 					f.write(f"            asserts=self.VR.process_data({step_id}['assert']),\n")
 					f.write(f"            response=response,\n")

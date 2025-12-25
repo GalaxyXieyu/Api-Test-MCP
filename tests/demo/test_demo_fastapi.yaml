@@ -1,0 +1,49 @@
+testcase:
+  name: test_demo_fastapi
+  description: 测试 FastAPI 计算器接口
+  host: http://localhost:48080
+  steps:
+    - id: health_check
+      method: GET
+      path: /health
+      project: demo_fastapi
+      assert:
+        - type: equals
+          field: status
+          expected: healthy
+
+    - id: add_calculation
+      method: POST
+      path: /add
+      project: demo_fastapi
+      headers:
+        Content-Type: application/json
+      data:
+        a: 10
+        b: 5
+      assert:
+        - type: equals
+          field: result
+          expected: 15
+
+    - id: subtract_calculation
+      method: POST
+      path: /subtract
+      project: demo_fastapi
+      headers:
+        Content-Type: application/json
+      data:
+        a: 10
+        b: 3
+      assert:
+        - type: equals
+          field: result
+          expected: 7
+
+    - id: get_users
+      method: GET
+      path: /users
+      project: demo_fastapi
+      assert:
+        - type: contains
+          expected: 张三

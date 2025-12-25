@@ -43,7 +43,7 @@ class AssertHandler:
             query = assertion.get('query')
 
             # 检查必填字段
-            if not field_path and assert_type not in ['mysql_query', 'mysql_query_exists', 'mysql_query_true']:
+            if not field_path and assert_type not in ['mysql_query', 'mysql_query_exists', 'mysql_query_true', 'contains', 'contain']:
                 log.error(f"断言的 'field' 不能为空: {assertion}")
                 raise ValueError(f"断言的 'field' 不能为空: {assertion}")
             if assert_type in ['equal', 'not equal'] and expected is None:
@@ -57,9 +57,9 @@ class AssertHandler:
             field_value = self.get_field_value(response, field_path) if field_path else None
 
             # 处理各种断言类型
-            if assert_type == 'equal':
+            if assert_type in ('equal', 'equals'):
                 assert field_value == expected, f"Expected {expected}, but got {field_value}"
-            elif assert_type == 'not equal':
+            elif assert_type in ('not equal', 'not_equal', 'not_equals'):
                 assert field_value != expected, f"Expected not {expected}, but got {field_value}"
             elif assert_type in ('is_none', 'is None', 'None'):
                 assert field_value is None, f"Expected None, but got {field_value}"
@@ -69,6 +69,20 @@ class AssertHandler:
                 assert field_value in container, f"Expected {field_value} to be in {container}"
             elif assert_type in ('not in', 'not_in'):
                 assert field_value not in container, f"Expected {field_value} to be not in {container}"
+            elif assert_type in ('contains', 'contain'):
+                # contains 不需要 field，直接检查 response 中是否包含 expected
+                def _check_contains(obj, target):
+                    """递归检查 obj 中是否包含 target"""
+                    if isinstance(obj, dict):
+                        return any(_check_contains(v, target) for v in obj.values())
+                    elif isinstance(obj, list):
+                        return any(_check_contains(item, target) for item in obj)
+                    elif isinstance(obj, str):
+                        return target in obj
+                    else:
+                        return str(obj) == str(target)
+
+                assert _check_contains(response, expected), f"Expected {expected} to be in {response}"
             elif assert_type == 'mysql_query':
                 self._validate_mysql_query(query, expected)
             elif assert_type == 'mysql_query_exists':
