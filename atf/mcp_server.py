@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
+import time
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -17,6 +22,10 @@ from atf.core.log_manager import log
 REPO_ROOT = Path(os.getenv("ATF_REPO_ROOT", Path(__file__).resolve().parent.parent))
 TESTS_ROOT = REPO_ROOT / "tests"
 TEST_CASES_ROOT = REPO_ROOT / "test_cases"
+RESULTS_ROOT = REPO_ROOT / "test_results"
+
+# 测试执行结果存储（内存中）
+_test_execution_history: list[dict] = []
 
 mcp = FastMCP(name="api-auto-test-mcp")
 MCP_VERSION = "0.1.0"
@@ -277,6 +286,79 @@ class DeleteTestcaseResponse(BaseModel):
 
     status: Literal["ok", "error"]
     deleted_files: list[str]
+
+
+# ==================== 测试执行结果模型 ====================
+
+
+class AssertionResultModel(BaseModel):
+    """断言结果模型"""
+    model_config = ConfigDict(extra="forbid")
+
+    assertion_type: str  # 断言类型: equals, contains, status_code, etc.
+    field: str | None = None  # 字段路径
+    expected: Any | None = None  # 期望值
+    actual: Any | None = None  # 实际值
+    passed: bool  # 是否通过
+    message: str | None = None  # 失败时的消息
+
+
+class TestResultModel(BaseModel):
+    """单个测试用例执行结果"""
+    model_config = ConfigDict(extra="forbid")
+
+    test_name: str  # 测试名称
+    status: Literal["passed", "failed", "error", "skipped"]  # 执行状态
+    duration: float  # 执行时间（秒）
+    assertions: list[AssertionResultModel]  # 断言结果列表
+    error_message: str | None = None  # 错误信息
+    traceback: str | None = None  # 错误堆栈
+
+
+class RunTestcaseResponse(BaseModel):
+    """单个测试用例执行响应"""
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["ok", "error"]
+    test_name: str
+    yaml_path: str | None = None
+    py_path: str | None = None
+    result: TestResultModel | None = None
+
+
+class BatchRunResponse(BaseModel):
+    """批量执行响应"""
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["ok", "error"]
+    total: int  # 总数
+    passed: int  # 通过
+    failed: int  # 失败
+    skipped: int  # 跳过
+    duration: float  # 总耗时（秒）
+    results: list[TestResultModel]  # 每个测试用例的结果
+
+
+class TestResultHistoryModel(BaseModel):
+    """测试结果历史记录"""
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str  # 运行ID
+    timestamp: str  # 执行时间
+    total: int
+    passed: int
+    failed: int
+    skipped: int
+    duration: float
+    test_names: list[str]  # 执行的测试用例列表
+
+
+class GetTestResultsResponse(BaseModel):
+    """获取测试执行历史响应"""
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["ok", "error"]
+    results: list[TestResultHistoryModel]
 
 
 def _get_roots(workspace: str | None) -> tuple[Path, Path, Path]:
@@ -712,6 +794,333 @@ def write_unittest(
     except Exception as exc:
         log.error(f"MCP 写入单元测试失败: {exc}")
         return GenerateResponse(status="error", written_files=[])
+
+
+# ==================== 测试执行 MCP 工具 ====================
+
+
+def _run_pytest(pytest_path: str, repo_root: Path) -> dict:
+    """执行 pytest 并返回结果"""
+    start_time = time.time()
+    result_data = {
+        "test_name": "",
+        "status": "error",
+        "duration": 0.0,
+        "assertions": [],
+        "error_message": None,
+        "traceback": None,
+    }
+
+    try:
+        # 构建 pytest 命令
+        cmd = [sys.executable, "-m", "pytest", pytest_path, "-v", "--tb=short", "-q"]
+        log.info(f"执行测试命令: {' '.join(cmd)}")
+
+        process = subprocess.Popen(
+            cmd,
+            cwd=str(repo_root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        end_time = time.time()
+        duration = round(end_time - start_time, 2)
+
+        # 从路径提取测试名称
+        test_name = Path(pytest_path).stem.replace("test_", "")
+
+        result_data["test_name"] = test_name
+        result_data["duration"] = duration
+
+        # 解析测试结果
+        if process.returncode == 0:
+            result_data["status"] = "passed"
+        else:
+            result_data["status"] = "failed"
+            # 提取错误信息
+            if stderr:
+                result_data["error_message"] = stderr[-500:] if len(stderr) > 500 else stderr
+            if stdout:
+                result_data["traceback"] = stdout[-500:] if len(stdout) > 500 else stdout
+
+            # 尝试解析断言失败信息
+            if "FAILED" in stdout or "AssertionError" in stderr:
+                result_data["assertions"] = [
+                    AssertionResultModel(
+                        assertion_type="unknown",
+                        passed=False,
+                        message=f"测试失败，返回码: {process.returncode}"
+                    ).model_dump()
+                ]
+
+        # 尝试从 stdout 提取统计信息
+        if "passed" in stdout.lower() or "failed" in stdout.lower():
+            # 简化处理：创建一个通用的断言结果
+            result_data["assertions"] = [
+                AssertionResultModel(
+                    assertion_type="execution",
+                    passed=process.returncode == 0,
+                    message=stdout.strip()[-200:] if stdout else "执行完成"
+                ).model_dump()
+            ]
+
+    except Exception as exc:
+        result_data["error_message"] = str(exc)
+        log.error(f"执行 pytest 失败: {exc}")
+
+    return result_data
+
+
+@mcp.tool(
+    name="run_testcase",
+    title="执行单个测试用例",
+    description="执行指定的 YAML 测试用例（需先有对应的 pytest 脚本），返回执行结果和断言详情。",
+)
+def run_testcase(
+    yaml_path: str,
+    workspace: str | None = None,
+) -> RunTestcaseResponse:
+    """执行单个测试用例"""
+    try:
+        yaml_full_path, yaml_relative_path, repo_root = _resolve_yaml_path(yaml_path, workspace)
+        testcase_model = _parse_testcase_input(_load_yaml_file(yaml_full_path))
+
+        py_full_path, py_relative_path = _expected_py_path(
+            yaml_full_path=yaml_full_path,
+            testcase_name=testcase_model.name,
+            workspace=workspace,
+        )
+
+        if not py_full_path.exists():
+            return RunTestcaseResponse(
+                status="error",
+                test_name=testcase_model.name,
+                yaml_path=yaml_relative_path,
+                py_path=None,
+                result=None,
+            )
+
+        # 执行测试
+        result_data = _run_pytest(str(py_full_path), repo_root)
+
+        # 转换为 Pydantic 模型
+        result = TestResultModel(
+            test_name=result_data["test_name"],
+            status=result_data["status"],
+            duration=result_data["duration"],
+            assertions=[
+                AssertionResultModel(**a) for a in result_data.get("assertions", [])
+            ],
+            error_message=result_data.get("error_message"),
+            traceback=result_data.get("traceback"),
+        )
+
+        return RunTestcaseResponse(
+            status="ok",
+            test_name=testcase_model.name,
+            yaml_path=yaml_relative_path,
+            py_path=py_relative_path,
+            result=result,
+        )
+    except Exception as exc:
+        log.error(f"MCP 执行测试用例失败: {exc}")
+        return RunTestcaseResponse(
+            status="error",
+            test_name="",
+            yaml_path=None,
+            py_path=None,
+            result=None,
+        )
+
+
+@mcp.tool(
+    name="run_testcases",
+    title="批量执行测试用例",
+    description="批量执行指定的 YAML 测试用例，支持目录和文件模式，返回汇总统计和每个用例的详细结果。",
+)
+def run_testcases(
+    root_path: str | None = None,
+    test_type: Literal["all", "integration", "unit"] = "all",
+    workspace: str | None = None,
+) -> BatchRunResponse:
+    """批量执行测试用例"""
+    global _test_execution_history
+
+    start_time = time.time()
+    results: list[TestResultModel] = []
+
+    try:
+        repo_root, tests_root, _ = _get_roots(workspace)
+        tests_root_resolved = tests_root.resolve(strict=False)
+
+        if root_path:
+            raw_path = Path(root_path)
+            if raw_path.is_absolute():
+                base_dir = raw_path.resolve(strict=False)
+            else:
+                base_dir = (repo_root / raw_path).resolve(strict=False)
+        else:
+            base_dir = tests_root_resolved
+
+        # 获取所有 YAML 文件
+        yaml_files = list(base_dir.rglob("*.yaml"))
+
+        # 根据类型过滤
+        filtered_files = []
+        for yaml_file in yaml_files:
+            if not yaml_file.is_relative_to(tests_root_resolved):
+                continue
+            try:
+                data = _load_yaml_file(yaml_file)
+                is_unit = "unittest" in data
+                is_integration = "testcase" in data
+
+                if test_type == "all":
+                    filtered_files.append(yaml_file)
+                elif test_type == "unit" and is_unit:
+                    filtered_files.append(yaml_file)
+                elif test_type == "integration" and is_integration:
+                    filtered_files.append(yaml_file)
+            except Exception:
+                continue
+
+        log.info(f"找到 {len(filtered_files)} 个测试用例待执行")
+
+        # 逐个执行测试
+        for yaml_file in filtered_files:
+            try:
+                yaml_relative = yaml_file.relative_to(repo_root).as_posix()
+
+                # 如果是目录，列出所有 YAML
+                if yaml_file.is_dir():
+                    for sub_yaml in yaml_file.rglob("*.yaml"):
+                        if sub_yaml.is_relative_to(tests_root_resolved):
+                            result = _execute_single_test(str(sub_yaml), repo_root)
+                            results.append(result)
+                else:
+                    result = _execute_single_test(yaml_relative, repo_root)
+                    results.append(result)
+            except Exception as exc:
+                log.error(f"执行测试用例失败: {yaml_file}: {exc}")
+
+    except Exception as exc:
+        log.error(f"MCP 批量执行测试用例失败: {exc}")
+
+    end_time = time.time()
+    duration = round(end_time - start_time, 2)
+
+    # 统计结果
+    passed = sum(1 for r in results if r.status == "passed")
+    failed = sum(1 for r in results if r.status == "failed")
+    skipped = sum(1 for r in results if r.status == "skipped")
+
+    # 保存到历史记录
+    run_id = str(uuid.uuid4())[:8]
+    _test_execution_history.append({
+        "run_id": run_id,
+        "timestamp": datetime.now().isoformat(),
+        "total": len(results),
+        "passed": passed,
+        "failed": failed,
+        "skipped": skipped,
+        "duration": duration,
+        "test_names": [r.test_name for r in results],
+    })
+
+    return BatchRunResponse(
+        status="ok" if failed == 0 else "error",
+        total=len(results),
+        passed=passed,
+        failed=failed,
+        skipped=skipped,
+        duration=duration,
+        results=results,
+    )
+
+
+def _execute_single_test(yaml_path: str, repo_root: Path) -> TestResultModel:
+    """执行单个测试用例并返回结果"""
+    try:
+        yaml_full_path, yaml_relative_path, _ = _resolve_yaml_path(yaml_path)
+        data = _load_yaml_file(yaml_full_path)
+
+        # 解析测试用例
+        if "testcase" in data:
+            testcase_model = _parse_testcase_input(data)
+        elif "unittest" in data:
+            testcase_model = _parse_unittest_input(data)
+        else:
+            raise ValueError("未知的测试用例格式")
+
+        py_full_path, _ = _expected_py_path(yaml_full_path, testcase_model.name)
+
+        if not py_full_path.exists():
+            return TestResultModel(
+                test_name=testcase_model.name,
+                status="error",
+                duration=0.0,
+                assertions=[],
+                error_message="pytest 文件不存在，请先生成",
+            )
+
+        # 执行测试
+        result_data = _run_pytest(str(py_full_path), repo_root)
+
+        return TestResultModel(
+            test_name=result_data["test_name"],
+            status=result_data["status"],
+            duration=result_data["duration"],
+            assertions=[
+                AssertionResultModel(**a) for a in result_data.get("assertions", [])
+            ],
+            error_message=result_data.get("error_message"),
+            traceback=result_data.get("traceback"),
+        )
+    except Exception as exc:
+        log.error(f"执行单个测试失败: {exc}")
+        return TestResultModel(
+            test_name=Path(yaml_path).stem,
+            status="error",
+            duration=0.0,
+            assertions=[],
+            error_message=str(exc),
+        )
+
+
+@mcp.tool(
+    name="get_test_results",
+    title="获取测试执行历史",
+    description="获取测试执行历史记录，包括每次运行的统计信息和测试用例列表。",
+)
+def get_test_results(
+    limit: int = 10,
+) -> GetTestResultsResponse:
+    """获取测试执行历史"""
+    global _test_execution_history
+
+    try:
+        # 返回最近的记录
+        recent = _test_execution_history[-limit:] if limit > 0 else _test_execution_history
+
+        results = [
+            TestResultHistoryModel(
+                run_id=item["run_id"],
+                timestamp=item["timestamp"],
+                total=item["total"],
+                passed=item["passed"],
+                failed=item["failed"],
+                skipped=item["skipped"],
+                duration=item["duration"],
+                test_names=item["test_names"],
+            )
+            for item in recent
+        ]
+
+        return GetTestResultsResponse(status="ok", results=results)
+    except Exception as exc:
+        log.error(f"获取测试执行历史失败: {exc}")
+        return GetTestResultsResponse(status="error", results=[])
 
 
 def main():
