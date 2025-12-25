@@ -42,63 +42,12 @@ _history_lock = threading.Lock()
 _ATF_ROOT = Path(__file__).parent.parent.parent.parent
 
 
-def _check_allure_available() -> bool:
-    """检查 allure 命令是否可用"""
-    return shutil.which("allure") is not None
-
-
-def _install_allure() -> bool:
-    """安装 allure 命令行工具"""
-    log.info("正在安装 Allure 命令行工具...")
-
-    # 尝试通过 npm 安装
-    npm_path = shutil.which("npm")
-    if npm_path:
-        result = subprocess.run(
-            [npm_path, "install", "-g", "allure-commandline"],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if result.returncode == 0:
-            log.info("✅ Allure 安装成功（npm）")
-            return True
-        log.warning(f"Allure npm 安装失败: {result.stderr}")
-
-    # 尝试通过 pip 安装
-    python_path = sys.executable
-    result = subprocess.run(
-        [python_path, "-m", "pip", "install", "allure-pytest"],
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode == 0:
-        log.info("✅ Allure 安装成功（pip）")
-        return True
-    log.warning(f"Allure pip 安装失败: {result.stderr}")
-
-    return False
-
-
-def _ensure_allure_available() -> bool:
-    """确保 allure 可用，不存在则自动安装
-
-    Returns:
-        bool: allure 是否可用
-    """
-    # 先检查 Java 是否可用（Allure 需要 Java）
-    try:
-        subprocess.run(["java", "-version"], capture_output=True, text=True, timeout=10)
-    except FileNotFoundError:
-        log.warning("⚠️ Java 未安装，Allure 报告需要 Java 运行环境")
-        log.info("💡 安装方式: brew install openjdk@11 或 brew install openjdk")
-        return False
-
-    if _check_allure_available():
-        return True
-    log.warning("Allure 命令未找到，尝试自动安装...")
-    return _install_allure()
+def _get_report_path(repo_root: Path) -> Path:
+    """获取 HTML 报告路径"""
+    report_dir = repo_root / "tests" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return report_dir / f"report_{timestamp}.html"
 
 
 def _check_python_has_dependencies(python_path: str, required_modules: list[str]) -> tuple[bool, list[str]]:
@@ -313,12 +262,12 @@ def run_pytest(pytest_path: str, repo_root: Path, python_path: str | None = None
                 env["PYTHONPATH"] = f"{_ATF_ROOT}:{env.get('PYTHONPATH', '')}"
                 log.info(f"项目 venv 缺少 atf 模块，通过 PYTHONPATH 添加 api-auto-test")
 
-        # 构建 pytest 命令
-        allure_dir = repo_root / "tests" / "allure-results"
+        # 构建 pytest 命令（使用 pytest-html 生成报告，无需 Java）
+        report_path = _get_report_path(repo_root)
         if python_path == "uv":
-            cmd = ["uv", "run", "pytest", pytest_path, "-v", "--tb=short", "-q", "--alluredir", str(allure_dir)]
+            cmd = ["uv", "run", "pytest", pytest_path, "-v", "--tb=short", f"--html={report_path}", "--self-contained-html"]
         else:
-            cmd = [python_path, "-m", "pytest", pytest_path, "-v", "--tb=short", "-q", "--alluredir", str(allure_dir)]
+            cmd = [python_path, "-m", "pytest", pytest_path, "-v", "--tb=short", f"--html={report_path}", "--self-contained-html"]
 
         log.info(f"执行测试命令: {' '.join(cmd)}")
 
@@ -389,19 +338,10 @@ def run_pytest(pytest_path: str, repo_root: Path, python_path: str | None = None
                 ).model_dump()
             ]
 
-        # 自动生成 Allure 报告
-        if allure_dir.exists() and _ensure_allure_available():
-            report_dir = repo_root / "tests" / "allure-report"
-            try:
-                subprocess.run(
-                    ["allure", "generate", str(allure_dir), "-o", str(report_dir), "--clean"],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
-                log.info(f"✅ Allure 报告已生成: {report_dir}")
-            except Exception as exc:
-                log.warning(f"Allure 报告生成失败: {exc}")
+        # 报告路径信息
+        if report_path.exists():
+            result_data["report_path"] = str(report_path)
+            log.info(f"HTML 报告已生成: {report_path}")
 
     except Exception as exc:
         result_data["error_message"] = str(exc)

@@ -2,14 +2,336 @@
 # @author:  xiaoqq
 
 import os
+import re
 import yaml
 from atf.core.log_manager import log
+
+
+def sanitize_name(name: str) -> str:
+	"""
+	将名称转换为安全的 Python 标识符
+	- 空格/连字符 -> 下划线
+	- 中文 -> 移除（或可选转拼音）
+	- 特殊字符 -> 移除
+	"""
+	# 替换空格和连字符为下划线
+	result = re.sub(r'[\s\-]+', '_', name)
+	# 移除非 ASCII 字符（中文等）
+	result = re.sub(r'[^\x00-\x7F]+', '', result)
+	# 移除非法字符，只保留字母、数字、下划线
+	result = re.sub(r'[^a-zA-Z0-9_]', '', result)
+	# 移除开头的数字
+	result = re.sub(r'^[0-9]+', '', result)
+	# 移除连续下划线
+	result = re.sub(r'_+', '_', result)
+	# 移除首尾下划线
+	result = result.strip('_')
+	# 如果结果为空，使用默认名称
+	if not result:
+		result = 'unnamed_test'
+	return result.lower()
+
+
+def to_class_name(name: str) -> str:
+	"""
+	将名称转换为 PascalCase 类名
+	"health check api" -> "HealthCheckApi"
+	"product_list_test" -> "ProductListTest"
+	"""
+	safe_name = sanitize_name(name)
+	# 按下划线分割，每个部分首字母大写
+	parts = safe_name.split('_')
+	return ''.join(part.capitalize() for part in parts if part)
+
+
+def check_python_syntax(code: str) -> tuple[bool, list[str]]:
+	"""
+	检查 Python 代码语法
+	返回 (是否有效, 错误列表)
+	"""
+	import ast
+	try:
+		ast.parse(code)
+		return True, []
+	except SyntaxError as e:
+		error_msg = f"Line {e.lineno}: {e.msg}"
+		if e.text:
+			error_msg += f" -> {e.text.strip()}"
+		return False, [error_msg]
 
 
 class CaseGenerator:
 	"""
 	测试用例文件生成器
 	"""
+	
+	def generate_single(self, yaml_file: str, output_dir: str = None, base_dir: str = None, dry_run: bool = False) -> dict:
+		"""
+		生成单个测试用例，返回详细结果
+		
+		Args:
+			yaml_file: YAML 文件路径
+			output_dir: 输出目录
+			base_dir: 基准目录
+			dry_run: 是否仅预览，不实际写入
+			
+		Returns:
+			{
+				"success": bool,
+				"file_path": str,
+				"name_mapping": {"original": str, "safe": str, "class": str},
+				"syntax_valid": bool,
+				"syntax_errors": list[str],
+				"code_preview": str (dry_run 模式),
+				"error": str (失败时)
+			}
+		"""
+		result = {
+			"success": False,
+			"file_path": None,
+			"name_mapping": None,
+			"syntax_valid": None,
+			"syntax_errors": None,
+			"code_preview": None,
+			"error": None
+		}
+		
+		try:
+			# 加载 YAML
+			test_data_raw = self.load_test_data(yaml_file)
+			if not test_data_raw:
+				result["error"] = f"无法加载 YAML 文件: {yaml_file}"
+				return result
+				
+			if not self.validate_test_data(test_data_raw):
+				result["error"] = "YAML 数据校验不通过"
+				return result
+			
+			test_data = test_data_raw['testcase']
+			raw_name = test_data['name']
+			
+			# 名称处理
+			safe_name = sanitize_name(raw_name)
+			class_name = to_class_name(raw_name)
+			result["name_mapping"] = {
+				"original": raw_name,
+				"safe": safe_name,
+				"class": class_name
+			}
+			
+			# 生成代码
+			code = self._generate_code(test_data, yaml_file, base_dir or 'tests/cases')
+			
+			# 语法校验
+			syntax_valid, syntax_errors = check_python_syntax(code)
+			result["syntax_valid"] = syntax_valid
+			result["syntax_errors"] = syntax_errors
+			
+			if not syntax_valid:
+				result["error"] = f"生成的代码存在语法错误: {syntax_errors}"
+				result["code_preview"] = code[:500] + "..." if len(code) > 500 else code
+				return result
+			
+			# 计算输出路径
+			if base_dir is None:
+				base_dir = 'tests/cases'
+			relative_path = os.path.relpath(yaml_file, base_dir)
+			path_components = relative_path.split(os.sep)
+			if path_components:
+				path_components.pop()
+			directory_path = os.path.join(*path_components) if path_components else ""
+			
+			file_name = f'test_{safe_name}.py'
+			if output_dir:
+				file_path = os.path.join(output_dir, directory_path, file_name)
+			else:
+				file_path = os.path.join('tests', 'scripts', directory_path, file_name)
+			
+			result["file_path"] = file_path
+			
+			if dry_run:
+				result["success"] = True
+				result["code_preview"] = code
+				return result
+			
+			# 写入文件
+			os.makedirs(os.path.dirname(file_path), exist_ok=True)
+			with open(file_path, 'w', encoding='utf-8') as f:
+				f.write(code)
+			
+			result["success"] = True
+			log.info(f"已生成测试用例文件: {file_path}")
+			
+		except Exception as e:
+			result["error"] = str(e)
+			log.error(f"生成测试用例失败: {e}")
+		
+		return result
+	
+	def _generate_code(self, test_data: dict, yaml_file: str, base_dir: str) -> str:
+		"""生成 Python 测试代码字符串"""
+		import io
+		
+		raw_name = test_data['name']
+		module_name = sanitize_name(raw_name)
+		module_class_name = to_class_name(raw_name)
+		description = test_data.get('description')
+		case_name = f"test_{module_name} ({description})" if description else f"test_{module_name}"
+		
+		teardowns = test_data.get('teardowns')
+		validate_teardowns = self.validate_teardowns(teardowns)
+		
+		# 计算 project_name
+		relative_path = os.path.relpath(yaml_file, base_dir)
+		path_components = relative_path.split(os.sep)
+		project_name = path_components[0] if path_components[0] else path_components[1]
+		
+		allure_epic = test_data.get("allure", {}).get("epic", project_name)
+		allure_feature = test_data.get("allure", {}).get("feature")
+		allure_story = test_data.get("allure", {}).get("story", module_name)
+		testcase_host = test_data.get('host')
+		
+		# 使用 StringIO 生成代码
+		f = io.StringIO()
+		
+		f.write(f"# Auto-generated test module for {module_name}\n")
+		f.write(f"from atf.core.log_manager import log\n")
+		f.write(f"from atf.core.globals import Globals\n")
+		f.write(f"from atf.core.variable_resolver import VariableResolver\n")
+		f.write(f"from atf.core.request_handler import RequestHandler\n")
+		f.write(f"from atf.core.assert_handler import AssertHandler\n")
+		if validate_teardowns:
+			f.write(f"from atf.handlers.teardown_handler import TeardownHandler\n")
+			f.write(f"from atf.core.login_handler import LoginHandler\n")
+		f.write(f"import allure\n")
+		f.write(f"import yaml\n\n")
+		
+		f.write(f"@allure.epic('{allure_epic}')\n")
+		if allure_feature:
+			f.write(f"@allure.feature('{allure_feature}')\n")
+		f.write(f"class Test{module_class_name}:\n")
+		
+		f.write(f"    @classmethod\n")
+		f.write(f"    def setup_class(cls):\n")
+		f.write(f"        log.info('========== 开始执行测试用例：{case_name} ==========')\n")
+		f.write(f"        cls.test_case_data = cls.load_test_case_data()\n")
+		
+		if validate_teardowns:
+			f.write(f"        cls.login_handler = LoginHandler()\n")
+			f.write(f"        cls.teardowns_dict = {{teardown['id']: teardown for teardown in cls.test_case_data['teardowns']}}\n")
+			f.write(f"        for teardown in cls.test_case_data.get('teardowns', []):\n")
+			f.write(f"            project = teardown.get('project')\n")
+			f.write(f"            if project:\n")
+			f.write(f"                cls.login_handler.check_and_login_project(project, Globals.get('env'))\n")
+		
+		f.write(f"        cls.steps_dict = {{step['id']: step for step in cls.test_case_data['steps']}}\n")
+		f.write(f"        cls.session_vars = {{}}\n")
+		f.write(f"        cls.global_vars = Globals.get_data()\n")
+		
+		if testcase_host:
+			f.write(f"        cls.testcase_host = '{testcase_host}'\n")
+		
+		f.write(f"        cls.VR = VariableResolver(global_vars=cls.global_vars, session_vars=cls.session_vars)\n")
+		f.write(f"        log.info('Setup completed for Test{module_class_name}')\n\n")
+		
+		f.write(f"    @staticmethod\n")
+		f.write(f"    def load_test_case_data():\n")
+		f.write(f"        with open(r'{yaml_file}', 'r', encoding='utf-8') as file:\n")
+		f.write(f"            test_case_data = yaml.safe_load(file)['testcase']\n")
+		f.write(f"        return test_case_data\n\n")
+		
+		f.write(f"    @allure.story('{allure_story}')\n")
+		f.write(f"    def test_{module_name}(self):\n")
+		f.write(f"        log.info('Starting test_{module_name}')\n")
+		
+		for step in test_data['steps']:
+			step_id = step['id']
+			step_project = step.get("project")
+			f.write(f"        # Step: {step_id}\n")
+			f.write(f"        log.info(f'开始执行 step: {step_id}')\n")
+			f.write(f"        {step_id} = self.steps_dict.get('{step_id}')\n")
+			
+			if testcase_host:
+				f.write(f"        step_host = self.testcase_host\n")
+			elif step_project:
+				f.write(f"        project_config = self.global_vars.get('{step_project}')\n")
+				f.write(f"        step_host = project_config['host'] if project_config else ''\n")
+			else:
+				f.write(f"        project_config = self.global_vars.get('{project_name}')\n")
+				f.write(f"        step_host = project_config['host'] if project_config else ''\n")
+			
+			f.write(f"        response = RequestHandler.send_request(\n")
+			f.write(f"            method={step_id}['method'],\n")
+			f.write(f"            url=step_host + self.VR.process_data({step_id}['path']),\n")
+			f.write(f"            headers=self.VR.process_data({step_id}.get('headers')),\n")
+			f.write(f"            data=self.VR.process_data({step_id}.get('data')),\n")
+			f.write(f"            params=self.VR.process_data({step_id}.get('params')),\n")
+			f.write(f"            files=self.VR.process_data({step_id}.get('files'))\n")
+			f.write(f"        )\n")
+			f.write(f"        log.info(f'{step_id} 请求结果为：{{response}}')\n")
+			f.write(f"        self.session_vars['{step_id}'] = response\n")
+			
+			if 'assert' in step:
+				if not testcase_host:
+					f.write(f"        db_config = project_config.get('mysql')\n")
+				else:
+					f.write(f"        db_config = None\n")
+				f.write(f"        AssertHandler().handle_assertion(\n")
+				f.write(f"            asserts=self.VR.process_data({step_id}['assert']),\n")
+				f.write(f"            response=response,\n")
+				f.write(f"            db_config=db_config\n")
+				f.write(f"        )\n\n")
+		
+		# teardown 处理
+		if validate_teardowns:
+			f.write(f"    @classmethod\n")
+			f.write(f"    def teardown_class(cls):\n")
+			f.write(f"        log.info('Starting teardown for the Test{module_class_name}')\n")
+			for teardown_step in teardowns:
+				teardown_step_id = teardown_step['id']
+				teardown_step_project = teardown_step.get("project")
+				f.write(f"        {teardown_step_id} = cls.teardowns_dict.get('{teardown_step_id}')\n")
+				
+				if teardown_step_project:
+					f.write(f"        project_config = cls.global_vars.get('{teardown_step_project}')\n")
+				else:
+					f.write(f"        project_config = cls.global_vars.get('{project_name}')\n")
+				
+				if teardown_step['operation_type'] == 'api':
+					f.write(f"        response = RequestHandler.send_request(\n")
+					f.write(f"            method={teardown_step_id}['method'],\n")
+					f.write(f"            url=project_config['host'] + cls.VR.process_data({teardown_step_id}['path']),\n")
+					f.write(f"            headers=cls.VR.process_data({teardown_step_id}.get('headers')),\n")
+					f.write(f"            data=cls.VR.process_data({teardown_step_id}.get('data')),\n")
+					f.write(f"            params=cls.VR.process_data({teardown_step_id}.get('params')),\n")
+					f.write(f"            files=cls.VR.process_data({teardown_step_id}.get('files'))\n")
+					f.write(f"        )\n")
+					f.write(f"        log.info(f'{teardown_step_id} 请求结果为：{{response}}')\n")
+					f.write(f"        cls.session_vars['{teardown_step_id}'] = response\n")
+					
+					if 'assert' in teardown_step:
+						f.write(f"        db_config = project_config.get('mysql')\n")
+						f.write(f"        AssertHandler().handle_assertion(\n")
+						f.write(f"            asserts=cls.VR.process_data({teardown_step_id}['assert']),\n")
+						f.write(f"            response=response,\n")
+						f.write(f"            db_config=db_config\n")
+						f.write(f"        )\n\n")
+				elif teardown_step['operation_type'] == 'db':
+					f.write(f"        db_config = project_config.get('mysql')\n")
+					f.write(f"        TeardownHandler().handle_teardown(\n")
+					f.write(f"            asserts=cls.VR.process_data({teardown_step_id}),\n")
+					f.write(f"            db_config=db_config\n")
+					f.write(f"        )\n\n")
+					f.write(f"        pass\n")
+				else:
+					f.write(f"        pass\n")
+			
+			f.write(f"        log.info('Teardown completed for Test{module_class_name}.')\n")
+		
+		f.write(f"\n        log.info(f\"Test case test_{module_name} completed.\")\n")
+		
+		return f.getvalue()
+	
 	def generate_test_cases(self, project_yaml_list=None, output_dir=None, base_dir=None):
 		"""
 		根据YAML文件生成测试用例并保存到指定目录
@@ -88,15 +410,18 @@ class CaseGenerator:
 		log.info(f"[CaseGenerator]   project_name={project_name}")
 		log.info(f"[CaseGenerator]   directory_path={directory_path}")
 		
-		module_name = test_data['name']
+		raw_name = test_data['name']
 		description = test_data.get('description')
+		
+		# 安全处理名称：支持中文、空格等
+		module_name = sanitize_name(raw_name)
+		module_class_name = to_class_name(raw_name)
+		
 		# 日志记录中的测试用例名称
 		case_name = f"test_{module_name} ({description})" if description is not None else f"test_{module_name}"
-		
-		# 判断test_data中的name是否存在"_"，存在则去掉将首字母大写组成一个新的字符串，否则首字母大写
-		module_class_name = (''.join(s.capitalize() for s in module_name.split('_'))
-							 if '_' in module_name else module_name.capitalize())
 		file_name = f'test_{module_name}.py'
+		
+		log.info(f"[CaseGenerator] Name processing: '{raw_name}' -> module='{module_name}', class='{module_class_name}'")
 		
 		# 生成文件路径
 		if output_dir:

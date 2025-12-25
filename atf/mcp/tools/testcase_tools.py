@@ -3,6 +3,7 @@ Testcase CRUD Tools
 测试用例读写工具
 """
 
+from pathlib import Path
 from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
@@ -219,7 +220,13 @@ def register_testcase_tools(mcp: FastMCP) -> None:
         "- `yaml_path`: YAML 文件路径（相对于 workspace），**必须**\n"
         "- `testcase`: 可选，测试用例数据，不传则仅重新生成 py\n"
         "- `overwrite`: 默认 true，覆盖已存在的文件\n"
+        "- `dry_run`: 默认 false，设为 true 时仅预览生成的代码，不实际写入文件\n"
         "- `workspace`: **必须**，指定项目根目录\n\n"
+        "**返回值增强**:\n"
+        "- `name_mapping`: 名称转换信息 {original, safe, class}\n"
+        "- `syntax_valid`: 生成代码是否通过语法校验\n"
+        "- `syntax_errors`: 语法错误列表\n"
+        "- `code_preview`: dry_run 模式下的代码预览\n\n"
         "**目录结构**:\n"
         "- YAML 文件保存在: `tests/cases/`\n"
         "- py 脚本生成在: `tests/scripts/`\n\n"
@@ -243,6 +250,7 @@ def register_testcase_tools(mcp: FastMCP) -> None:
         yaml_path: str,
         testcase: TestcaseModel | dict | str | None = None,
         overwrite: bool = True,
+        dry_run: bool = False,
         workspace: str | None = None,
     ) -> GenerateResponse:
         try:
@@ -266,52 +274,60 @@ def register_testcase_tools(mcp: FastMCP) -> None:
             if not repo_root.exists() or not repo_root.is_dir():
                 raise ValueError(f"工作目录不存在: {repo_root}")
 
-            py_full_path, py_relative_path = expected_py_path(
-                yaml_full_path=yaml_full_path,
-                testcase_name=testcase_model.name,
-                workspace=workspace,
-            )
-
-            # 写入模式：检查文件存在性
-            if is_write_mode:
+            # 写入模式且非 dry_run：检查文件存在性
+            if is_write_mode and not dry_run:
                 if yaml_full_path.exists() and not overwrite:
                     raise ValueError("YAML 文件已存在，未开启覆盖写入")
 
-            # pytest 文件检查（两种模式都需要）
-            if py_full_path.exists() and not overwrite:
-                raise ValueError("pytest 文件已存在，未开启覆盖写入")
-
-            # 写入模式：写入 YAML
-            if is_write_mode:
+            # 写入模式且非 dry_run：写入 YAML
+            if is_write_mode and not dry_run:
                 yaml_full_path.parent.mkdir(parents=True, exist_ok=True)
                 test_data = build_testcase_yaml(testcase_model)
                 with yaml_full_path.open("w", encoding="utf-8") as file:
                     yaml.safe_dump(test_data, file, allow_unicode=True, sort_keys=False)
 
-            # 删除已存在的 py（覆盖模式）
-            if overwrite and py_full_path.exists():
-                py_full_path.unlink()
-
             # base_dir 应该是 cases 目录，这样相对路径计算才正确
             base_dir = str(repo_root / "tests" / "cases")
-            # 必须传入绝对路径，因为 MCP server 的工作目录不是目标项目目录
             yaml_absolute_path = str(yaml_full_path)
-            # scripts 输出目录也需要是绝对路径
             output_dir = str(repo_root / "tests" / "scripts")
 
-            log.info(f"[MCP] write_testcase: mode={'写入' if is_write_mode else '重新生成'}")
-            log.info(f"[MCP] write_testcase: yaml_absolute_path={yaml_absolute_path}")
-            log.info(f"[MCP] write_testcase: expected py_full_path={py_full_path}")
+            log.info(f"[MCP] write_testcase: mode={'写入' if is_write_mode else '重新生成'}, dry_run={dry_run}")
 
-            CaseGenerator().generate_test_cases(
-                project_yaml_list=[yaml_absolute_path],
+            # 使用新的 generate_single 方法
+            result = CaseGenerator().generate_single(
+                yaml_file=yaml_absolute_path,
                 output_dir=output_dir,
-                base_dir=base_dir
+                base_dir=base_dir,
+                dry_run=dry_run
             )
-            if not py_full_path.exists():
-                raise ValueError("pytest 文件未生成，请检查测试用例数据格式")
 
-            return GenerateResponse(status="ok", written_files=[yaml_relative_path, py_relative_path])
+            if not result["success"]:
+                return GenerateResponse(
+                    status="error",
+                    written_files=[],
+                    name_mapping=result.get("name_mapping"),
+                    syntax_valid=result.get("syntax_valid"),
+                    syntax_errors=result.get("syntax_errors"),
+                    code_preview=result.get("code_preview"),
+                    error_message=result.get("error"),
+                    error_details={
+                        "error_type": "generation_failed",
+                        "name_mapping": result.get("name_mapping"),
+                        "syntax_errors": result.get("syntax_errors")
+                    }
+                )
+
+            py_relative_path = str(Path(result["file_path"]).relative_to(repo_root)) if result["file_path"] else None
+
+            return GenerateResponse(
+                status="ok",
+                written_files=[yaml_relative_path, py_relative_path] if not dry_run else [],
+                name_mapping=result.get("name_mapping"),
+                syntax_valid=result.get("syntax_valid"),
+                syntax_errors=result.get("syntax_errors"),
+                dry_run=dry_run,
+                code_preview=result.get("code_preview") if dry_run else None
+            )
         except ValidationError as exc:
             log.error(f"MCP 写入测试用例参数验证失败: {exc}")
             error_details = {

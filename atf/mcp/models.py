@@ -228,6 +228,15 @@ class GenerateResponse(BaseModel):
 
     status: Literal["ok", "error"]
     written_files: list[str]
+    # 名称转换信息
+    name_mapping: dict | None = None  # {"original": "Health Check API", "safe": "health_check_api", "class": "HealthCheckApi"}
+    # 语法校验结果
+    syntax_valid: bool | None = None
+    syntax_errors: list[str] | None = None
+    # dry_run 模式预览
+    dry_run: bool = False
+    code_preview: str | None = None  # dry_run 模式下的代码预览
+    # 错误信息
     error_message: str | None = None
     error_details: dict | None = None  # 更详细的错误信息，用于大模型理解
 
