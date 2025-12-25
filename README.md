@@ -346,9 +346,9 @@ uv --version
 
 ### 2️⃣ 安装 MCP 服务器
 
-**方式一：uvx 安装（推荐，等同于 pipx）**
+**方式一：uv tool install（推荐）**
 ```bash
-uvx install git+https://github.com/GalaxyXieyu/Api-Test-MCP.git
+uv tool install git+https://github.com/GalaxyXieyu/Api-Test-MCP.git
 ```
 
 **方式二：pipx 安装**
