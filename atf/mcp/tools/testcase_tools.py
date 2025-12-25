@@ -292,8 +292,8 @@ def register_testcase_tools(mcp: FastMCP) -> None:
             if overwrite and py_full_path.exists():
                 py_full_path.unlink()
 
-            # 使用 repo_root 作为 base_dir，确保 CaseGenerator 能正确计算相对路径
-            base_dir = str(repo_root)
+            # base_dir 应该是 cases 目录，这样相对路径计算才正确
+            base_dir = str(repo_root / "tests" / "cases")
             # 必须传入绝对路径，因为 MCP server 的工作目录不是目标项目目录
             yaml_absolute_path = str(yaml_full_path)
             # scripts 输出目录也需要是绝对路径
