@@ -10,6 +10,7 @@ from mcp.server import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from atf.case_generator import CaseGenerator
+from atf.unit_case_generator import UnitCaseGenerator
 from atf.core.log_manager import log
 
 
@@ -95,6 +96,115 @@ class AllureModel(BaseModel):
     epic: str | None = None
     feature: str | None = None
     story: str | None = None
+
+
+# ==================== 单元测试模型 ====================
+
+
+class MockModel(BaseModel):
+    """Mock 配置模型"""
+    model_config = ConfigDict(extra="forbid")
+
+    target: str  # mock 目标路径，如 "app.services.user_service.UserRepository"
+    method: str | None = None  # 方法名
+    return_value: Any | None = None  # 返回值
+    side_effect: Any | None = None  # 副作用（异常或可调用对象）
+
+
+class UnitTestInputModel(BaseModel):
+    """单元测试输入参数模型"""
+    model_config = ConfigDict(extra="forbid")
+
+    args: list[Any] | None = None  # 位置参数
+    kwargs: dict[str, Any] | None = None  # 关键字参数
+
+
+class UnitAssertionModel(BaseModel):
+    """单元测试断言模型"""
+    model_config = ConfigDict(extra="forbid")
+
+    type: str  # equals, not_equals, contains, raises, called_once, called_with, etc.
+    field: str | None = None  # JSONPath 字段路径
+    expected: Any | None = None  # 期望值
+    mock: str | None = None  # mock 名称（用于 mock 相关断言）
+    args: list[Any] | None = None  # 期望的调用参数
+    kwargs: dict[str, Any] | None = None  # 期望的关键字参数
+    exception: str | None = None  # 期望的异常类型
+    message: str | None = None  # 期望的异常消息
+
+
+class UnitTestCaseModel(BaseModel):
+    """单个单元测试用例模型"""
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    id: str
+    description: str | None = None
+    mocks: list[MockModel] | None = None
+    inputs: UnitTestInputModel | None = None
+    assert_: list[UnitAssertionModel] | None = Field(default=None, alias="assert")
+
+    @model_validator(mode="after")
+    def validate_required(self) -> "UnitTestCaseModel":
+        if not self.id:
+            raise ValueError("unittest.cases.id 不能为空")
+        return self
+
+
+class UnitTestTargetModel(BaseModel):
+    """被测目标模型"""
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    module: str  # 被测模块路径
+    class_: str | None = Field(default=None, alias="class")  # 被测类名
+    function: str | None = None  # 被测函数名
+
+    @model_validator(mode="after")
+    def validate_target(self) -> "UnitTestTargetModel":
+        if not self.module:
+            raise ValueError("unittest.target.module 不能为空")
+        return self
+
+
+class UnitTestFixtureModel(BaseModel):
+    """测试夹具模型"""
+    model_config = ConfigDict(extra="forbid")
+
+    type: str  # patch, cleanup, setup_db, etc.
+    target: str | None = None
+    value: Any | None = None
+    action: str | None = None
+
+
+class UnitTestFixturesModel(BaseModel):
+    """测试夹具集合模型"""
+    model_config = ConfigDict(extra="forbid")
+
+    setup: list[UnitTestFixtureModel] | None = None
+    teardown: list[UnitTestFixtureModel] | None = None
+
+
+class UnitTestModel(BaseModel):
+    """单元测试模型"""
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    name: str
+    description: str | None = None
+    env_type: Literal["venv", "conda", "uv"] = "venv"  # 运行环境的虚拟环境类型
+    target: UnitTestTargetModel
+    allure: AllureModel | None = None
+    cases: list[UnitTestCaseModel]
+    fixtures: UnitTestFixturesModel | None = None
+
+    @model_validator(mode="after")
+    def validate_required(self) -> "UnitTestModel":
+        if not self.name:
+            raise ValueError("unittest.name 不能为空")
+        if not self.cases:
+            raise ValueError("unittest.cases 不能为空")
+        return self
+
+
+# ==================== 集成测试模型 ====================
 
 
 class TestcaseModel(BaseModel):
@@ -277,13 +387,51 @@ def _resolve_tests_root(root_path: str | None, workspace: str | None = None) -> 
     return normalized, repo_root
 
 
-def _expected_py_path(yaml_full_path: Path, testcase_name: str) -> tuple[Path, str]:
-    relative_to_tests = yaml_full_path.relative_to(TESTS_ROOT)
+def _expected_py_path(yaml_full_path: Path, testcase_name: str, workspace: str | None = None) -> tuple[Path, str]:
+    _, tests_root, test_cases_root = _get_roots(workspace)
+    repo_root = tests_root.parent
+    relative_to_tests = yaml_full_path.relative_to(tests_root)
     directory_path = relative_to_tests.parent
     py_filename = f"test_{testcase_name}.py"
-    py_full_path = (TEST_CASES_ROOT / directory_path / py_filename).resolve(strict=False)
-    py_relative_path = py_full_path.relative_to(REPO_ROOT).as_posix()
+    py_full_path = (test_cases_root / directory_path / py_filename).resolve(strict=False)
+    py_relative_path = py_full_path.relative_to(repo_root).as_posix()
     return py_full_path, py_relative_path
+
+
+# ==================== 单元测试辅助函数 ====================
+
+
+def _parse_unittest_input(raw_unittest: Any) -> UnitTestModel:
+    """解析单元测试输入"""
+    if isinstance(raw_unittest, UnitTestModel):
+        return raw_unittest
+
+    data = raw_unittest
+    if isinstance(raw_unittest, str):
+        stripped = raw_unittest.strip()
+        if not stripped:
+            raise ValueError("unittest 不能为空")
+        try:
+            data = json.loads(stripped)
+        except json.JSONDecodeError:
+            try:
+                data = yaml.safe_load(stripped)
+            except yaml.YAMLError as exc:
+                raise ValueError(f"unittest 字符串解析失败") from exc
+
+    if not isinstance(data, dict):
+        raise ValueError("unittest 必须是对象")
+
+    if "unittest" in data and isinstance(data["unittest"], dict):
+        data = data["unittest"]
+
+    return UnitTestModel.model_validate(data)
+
+
+def _build_unittest_yaml(unittest: UnitTestModel) -> dict[str, Any]:
+    """构建单元测试 YAML 数据"""
+    payload = unittest.model_dump(by_alias=True, exclude_none=True)
+    return {"unittest": payload}
 
 
 @mcp.tool(
@@ -304,15 +452,38 @@ def health_check() -> HealthResponse:
 @mcp.tool(
     name="list_testcases",
     title="列出测试用例 YAML",
-    description="列出 tests 目录下的 YAML 测试用例文件，可指定子目录。",
+    description="列出 tests 目录下的 YAML 测试用例文件，可指定子目录和测试类型过滤。",
 )
-def list_testcases(root_path: str | None = None) -> ListTestcasesResponse:
+def list_testcases(
+    root_path: str | None = None,
+    test_type: Literal["all", "integration", "unit"] = "all",
+    workspace: str | None = None,
+) -> ListTestcasesResponse:
     try:
-        base_dir = _resolve_tests_root(root_path)
-        testcases = sorted(
-            path.relative_to(REPO_ROOT).as_posix()
-            for path in base_dir.rglob("*.yaml")
-        )
+        base_dir, repo_root = _resolve_tests_root(root_path, workspace)
+        all_yaml_files = list(base_dir.rglob("*.yaml"))
+
+        if test_type == "all":
+            testcases = sorted(
+                path.relative_to(repo_root).as_posix()
+                for path in all_yaml_files
+            )
+        else:
+            testcases = []
+            for path in all_yaml_files:
+                try:
+                    data = _load_yaml_file(path)
+                    is_unit = "unittest" in data
+                    is_integration = "testcase" in data
+
+                    if test_type == "unit" and is_unit:
+                        testcases.append(path.relative_to(repo_root).as_posix())
+                    elif test_type == "integration" and is_integration:
+                        testcases.append(path.relative_to(repo_root).as_posix())
+                except Exception:
+                    continue
+            testcases = sorted(testcases)
+
         return ListTestcasesResponse(status="ok", testcases=testcases)
     except Exception as exc:
         log.error(f"MCP 列出测试用例失败: {exc}")
@@ -327,9 +498,10 @@ def list_testcases(root_path: str | None = None) -> ListTestcasesResponse:
 def read_testcase(
     yaml_path: str,
     mode: Literal["summary", "full"] = "summary",
+    workspace: str | None = None,
 ) -> ReadTestcaseResponse:
     try:
-        yaml_full_path, yaml_relative_path = _resolve_yaml_path(yaml_path)
+        yaml_full_path, yaml_relative_path, _ = _resolve_yaml_path(yaml_path, workspace)
         raw_data = _load_yaml_file(yaml_full_path)
         if mode == "full":
             return ReadTestcaseResponse(
@@ -361,10 +533,13 @@ def read_testcase(
     title="校验测试用例结构",
     description="校验指定 YAML 测试用例结构是否符合规范。",
 )
-def validate_testcase(yaml_path: str) -> ValidateTestcaseResponse:
+def validate_testcase(
+    yaml_path: str,
+    workspace: str | None = None,
+) -> ValidateTestcaseResponse:
     errors: list[str] = []
     try:
-        yaml_full_path, _ = _resolve_yaml_path(yaml_path)
+        yaml_full_path, _, _ = _resolve_yaml_path(yaml_path, workspace)
         raw_data = _load_yaml_file(yaml_full_path)
         _parse_testcase_input(raw_data)
     except ValidationError as exc:
@@ -389,16 +564,18 @@ def validate_testcase(yaml_path: str) -> ValidateTestcaseResponse:
 def regenerate_py(
     yaml_path: str,
     overwrite: bool = True,
+    workspace: str | None = None,
 ) -> RegenerateResponse:
     try:
-        os.chdir(REPO_ROOT)
-        yaml_full_path, yaml_relative_path = _resolve_yaml_path(yaml_path)
+        yaml_full_path, yaml_relative_path, repo_root = _resolve_yaml_path(yaml_path, workspace)
+        os.chdir(repo_root)
         if not yaml_full_path.exists():
             raise ValueError("YAML 文件不存在")
         testcase_model = _parse_testcase_input(_load_yaml_file(yaml_full_path))
         py_full_path, py_relative_path = _expected_py_path(
             yaml_full_path=yaml_full_path,
             testcase_name=testcase_model.name,
+            workspace=workspace,
         )
         if overwrite and py_full_path.exists():
             py_full_path.unlink()
@@ -422,16 +599,18 @@ def regenerate_py(
 def delete_testcase(
     yaml_path: str,
     delete_py: bool = True,
+    workspace: str | None = None,
 ) -> DeleteTestcaseResponse:
     deleted_files: list[str] = []
     try:
-        yaml_full_path, yaml_relative_path = _resolve_yaml_path(yaml_path)
+        yaml_full_path, yaml_relative_path, _ = _resolve_yaml_path(yaml_path, workspace)
         if not yaml_full_path.exists():
             raise ValueError("YAML 文件不存在")
         testcase_model = _parse_testcase_input(_load_yaml_file(yaml_full_path))
         py_full_path, py_relative_path = _expected_py_path(
             yaml_full_path=yaml_full_path,
             testcase_name=testcase_model.name,
+            workspace=workspace,
         )
         yaml_full_path.unlink()
         deleted_files.append(yaml_relative_path)
@@ -453,14 +632,16 @@ def write_testcase(
     yaml_path: str,
     testcase: TestcaseModel | dict | str,
     overwrite: bool = False,
+    workspace: str | None = None,
 ) -> GenerateResponse:
     try:
-        os.chdir(REPO_ROOT)
         testcase_model = _parse_testcase_input(testcase)
-        yaml_full_path, yaml_relative_path = _resolve_yaml_path(yaml_path)
+        yaml_full_path, yaml_relative_path, repo_root = _resolve_yaml_path(yaml_path, workspace)
+        os.chdir(repo_root)
         py_full_path, py_relative_path = _expected_py_path(
             yaml_full_path=yaml_full_path,
             testcase_name=testcase_model.name,
+            workspace=workspace,
         )
 
         if yaml_full_path.exists() and not overwrite:
@@ -486,5 +667,102 @@ def write_testcase(
         return GenerateResponse(status="error", written_files=[])
 
 
-if __name__ == "__main__":
+# ==================== 单元测试 MCP 工具 ====================
+
+
+@mcp.tool(
+    name="write_unittest",
+    title="写入单元测试用例并生成 pytest 脚本",
+    description="根据输入的单元测试结构写入 YAML 文件，并生成对应的 pytest 单元测试脚本。",
+)
+def write_unittest(
+    yaml_path: str,
+    unittest: UnitTestModel | dict | str,
+    overwrite: bool = False,
+    workspace: str | None = None,
+) -> GenerateResponse:
+    try:
+        unittest_model = _parse_unittest_input(unittest)
+        yaml_full_path, yaml_relative_path, repo_root = _resolve_yaml_path(yaml_path, workspace)
+        os.chdir(repo_root)
+        py_full_path, py_relative_path = _expected_py_path(
+            yaml_full_path=yaml_full_path,
+            testcase_name=unittest_model.name,
+            workspace=workspace,
+        )
+
+        if yaml_full_path.exists() and not overwrite:
+            raise ValueError("YAML 文件已存在，未开启覆盖写入")
+        if py_full_path.exists() and not overwrite:
+            raise ValueError("pytest 文件已存在，未开启覆盖写入")
+
+        yaml_full_path.parent.mkdir(parents=True, exist_ok=True)
+        test_data = _build_unittest_yaml(unittest_model)
+        with yaml_full_path.open("w", encoding="utf-8") as file:
+            yaml.safe_dump(test_data, file, allow_unicode=True, sort_keys=False)
+
+        if overwrite and py_full_path.exists():
+            py_full_path.unlink()
+
+        result = UnitCaseGenerator().generate_unit_tests(yaml_relative_path)
+        if not result:
+            raise ValueError("pytest 文件未生成，请检查单元测试数据格式")
+
+        return GenerateResponse(status="ok", written_files=[yaml_relative_path, py_relative_path])
+    except Exception as exc:
+        log.error(f"MCP 写入单元测试失败: {exc}")
+        return GenerateResponse(status="error", written_files=[])
+
+
+def main():
+    """MCP 服务器入口函数，支持 uv run mcp install"""
+    import sys
+    import json
+    import os
+
+    # 检查是否有 install 子命令
+    if len(sys.argv) > 1 and sys.argv[1] == "install":
+        mcp_config = {
+            "command": "api-auto-test-mcp",
+            "args": ["--workspace", "${workspace}"]
+        }
+
+        # 尝试找到 Claude Code 的 MCP 配置文件
+        config_path = None
+        for path in [
+            os.path.expanduser("~/.claude/.mcp.json"),
+            os.path.expanduser("~/.config/claude/mcp_settings.json"),
+        ]:
+            if os.path.exists(path):
+                config_path = path
+                break
+
+        if config_path:
+            with open(config_path, 'r') as f:
+                try:
+                    config = json.load(f)
+                except:
+                    config = {}
+        else:
+            config_path = os.path.expanduser("~/.claude/.mcp.json")
+            os.makedirs(os.path.dirname(config_path), exist_ok=True)
+            config = {}
+
+        mcp_servers = config.get("mcpServers", {})
+        mcp_servers["api-auto-test-mcp"] = mcp_config
+        config["mcpServers"] = mcp_servers
+
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+
+        print(f"已配置 MCP 服务器到: {config_path}")
+        print(f"配置内容: {json.dumps(mcp_config, indent=2)}")
+        print("\n请重启 Claude Code 以加载新的 MCP 服务器")
+        return
+
+    # 默认运行 stdio 模式 (MCP 协议)
     mcp.run("stdio")
+
+
+if __name__ == "__main__":
+    main()

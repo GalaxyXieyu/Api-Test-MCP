@@ -1,0 +1,37 @@
+unittest:
+  name: demo_service
+  description: "示例服务单元测试"
+  target:
+    module: "app.services.demo_service"
+    class: "DemoService"
+    function: "process_data"
+
+  allure:
+    epic: "单元测试"
+    feature: "示例服务"
+    story: "数据处理"
+
+  cases:
+    - id: test_process_success
+      description: "正常处理数据"
+      mocks:
+        - target: "app.services.demo_service.Repository"
+          method: "save"
+          return_value: {"id": 1, "status": "saved"}
+      inputs:
+        args: ["test_data"]
+        kwargs:
+          validate: true
+      assert:
+        - type: equals
+          field: "$.status"
+          expected: "saved"
+        - type: called_once
+          mock: "Repository.save"
+
+    - id: test_process_invalid
+      description: "无效数据应返回空"
+      inputs:
+        args: [null]
+      assert:
+        - type: is_none

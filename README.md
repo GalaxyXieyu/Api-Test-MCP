@@ -234,3 +234,327 @@ super_api_auto_test/
 * 2). 本地调试生成生成 Allure 报告时，本地需要配置好 Allure 工具。
 * 3). 在一条测试用例中，如果存在同一个接口需要调用多次时（调用多个接口的场景测试用例），测试数据文件（tests/ 目录下）中该接口的 id 不能同名，否则会报错。
 * 4). 修改了 tests/ 中的测试数据后，如果该测试数据已经在 test_cases/ 中生成了测试用例文件，则需要删除原来的测试用例文件，重新生成。ps：修改用例数据中某个 step 或 teardown 接口的请求参数、断言，不需要重新生成。
+
+---
+
+## MCP Server 安装与使用
+
+### 安装方式
+
+#### 方式一：发布到 PyPI 后安装（推荐）
+
+```bash
+# 1. 发布到 PyPI（开发者操作）
+# twine upload --repository pypi dist/*
+
+# 2. 用户安装
+pipx install api-auto-test
+```
+
+#### 方式二：从 GitHub 安装（发布前开发测试用）
+
+```bash
+# 1. 安装 uv（如果没有）
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 2. 从 GitHub 安装
+pipx install git+https://github.com/your-username/api-auto-test.git
+
+# 3. 注册到 Claude Code
+api-auto-test-mcp install
+```
+
+#### 方式三：本地开发模式
+
+```bash
+cd /path/to/api-auto-test
+uv run mcp install atf/mcp_server.py --name "api-auto-test"
+```
+
+**安装完成后**，Claude Code 会自动提示你重启，重启后 MCP 服务器即可使用。
+
+#### 方式四：pipx
+
+```bash
+pipx install api-auto-test
+```
+
+#### 方式五：pip
+
+```bash
+pip install api-auto-test
+```
+
+### Claude Code 配置
+
+安装后会自动配置 `.mcp.json`，或手动添加：
+
+```json
+{
+  "command": "api-auto-test-mcp",
+  "args": ["--workspace", "${workspace}"]
+}
+```
+
+### MCP 工具
+
+| 工具 | 说明 |
+|------|------|
+| `write_testcase` | 写入测试用例并生成 pytest 脚本 |
+| `write_unittest` | 写入单元测试并生成 pytest 脚本 |
+| `read_testcase` | 读取测试用例内容 |
+| `list_testcases` | 列出测试用例 |
+| `regenerate_py` | 重新生成 pytest |
+| `delete_testcase` | 删除测试用例 |
+
+### 集成测试示例
+
+```yaml
+# tests/demo_api_test.yaml
+testcase:
+  name: demo_api_test
+  steps:
+    - id: get_user
+      path: /api/users/1
+      method: GET
+      assert:
+        - type: status_code
+          expected: 200
+```
+
+### 单元测试示例
+
+```yaml
+# tests/unit/demo_service_test.yaml
+unittest:
+  name: demo_service_test
+  env_type: venv  # 可选: venv(默认) | conda | uv
+  target:
+    module: src.service.demo_service  # 被测模块路径
+    class: DemoService                # 可选：类名
+    function: get_user                # 可选：函数名
+  cases:
+    - id: test_get_user
+      description: 测试获取用户
+      inputs:
+        args: [1]
+      assert:
+        - type: equals
+          expected: "expected_value"
+```
+
+**生成的测试脚本**：
+
+```python
+# 运行方式: source .venv/bin/activate && pytest test_cases/ -v
+
+import pytest
+from unittest.mock import patch, MagicMock, call
+import allure
+import yaml
+
+from src.service.demo_service import DemoService  # ← 根据 target 生成
+```
+
+### 运行测试
+
+```bash
+# venv
+source .venv/bin/activate && pytest test_cases/ -v
+
+# conda
+conda activate <env_name> && pytest test_cases/ -v
+
+# uv
+uv run pytest test_cases/ -v
+```
+
+---
+
+## 在现有项目中使用 MCP
+
+### 完整流程
+
+假设你有一个现有项目 `my-project`，结构如下：
+
+```
+my-project/
+├── src/
+│   └── service/
+│       └── user_service.py   # 你想测试的代码
+├── tests/                    # 测试目录（需要新建）
+├── test_cases/              # 生成的测试脚本（自动创建）
+└── pyproject.toml           # 项目配置
+```
+
+#### 步骤 1：安装 MCP 服务器
+
+```bash
+# 方式一：从 GitHub 安装
+pipx install git+https://github.com/你的用户名/api-auto-test.git
+
+# 方式二：发布到 PyPI 后
+pipx install api-auto-test
+
+# 注册到 Claude Code
+api-auto-test-mcp install
+```
+
+**重启 Claude Code** 使 MCP 生效。
+
+#### 步骤 2：在 Claude Code 中使用 MCP 工具
+
+在 Claude Code 中，你可以使用以下 MCP 工具：
+
+| 工具 | 用途 |
+|------|------|
+| `write_unittest` | 创建单元测试 |
+| `write_testcase` | 创建集成测试（API） |
+| `list_testcases` | 列出现有测试 |
+| `read_testcase` | 查看测试内容 |
+| `regenerate_py` | 重新生成测试脚本 |
+| `delete_testcase` | 删除测试 |
+
+#### 步骤 3：创建单元测试示例
+
+在 Claude Code 中调用 MCP 工具：
+
+```python
+# 告诉 Claude：
+"创建一个单元测试，测试 src/service/user_service.py 中的 UserService.get_user 方法"
+```
+
+Claude 会使用 `write_unittest` 工具，生成类似这样的 YAML：
+
+```yaml
+# tests/unit/user_service_test.yaml
+unittest:
+  name: user_service_test
+  env_type: venv
+  target:
+    module: src.service.user_service
+    class: UserService
+    function: get_user
+  cases:
+    - id: test_get_user_normal
+      description: 正常获取用户
+      inputs:
+        args: [1]
+      assert:
+        - type: equals
+          expected: "expected_value"
+```
+
+**自动生成**的测试脚本：
+
+```python
+# test_cases/unit/test_user_service_test.py
+# 运行方式: source .venv/bin/activate && pytest test_cases/ -v
+
+import pytest
+from unittest.mock import patch, MagicMock, call
+import allure
+import yaml
+
+from src.service.user_service import UserService
+
+
+class TestUserService:
+    @allure.story("user_service_test")
+    def test_get_user_normal(self):
+        """正常获取用户"""
+        # 执行
+        instance = UserService()
+        result = instance.get_user(1)
+
+        # 断言
+        assert result == "expected_value"
+```
+
+#### 步骤 4：执行测试
+
+```bash
+# 方式一：在终端手动执行
+cd my-project
+source .venv/bin/activate
+pytest test_cases/ -v
+
+# 方式二：让 MCP 执行（如果 MCP 有 run_test 工具）
+# 或告诉 Claude："运行这个测试"
+```
+
+### 目录结构变化
+
+使用 MCP 后，你的项目会变成：
+
+```
+my-project/
+├── src/
+│   └── service/
+│       └── user_service.py
+├── tests/                          # MCP 工具读取的位置
+│   └── unit/
+│       └── user_service_test.yaml  # 你创建的测试定义
+├── test_cases/                     # 自动生成的测试脚本
+│   └── unit/
+│       └── test_user_service_test.py
+├── pyproject.toml
+└── .venv/                          # 虚拟环境
+```
+
+### 集成测试 vs 单元测试
+
+| 类型 | 用途 | YAML 根节点 |
+|------|------|-------------|
+| **集成测试** | 测试 API 接口 | `testcase` |
+| **单元测试** | 测试单个函数/类 | `unittest` |
+
+**集成测试示例**：
+
+```yaml
+# tests/api/user_api_test.yaml
+testcase:
+  name: user_api_test
+  steps:
+    - id: get_user
+      path: /api/users/1
+      method: GET
+      assert:
+        - type: status_code
+          expected: 200
+```
+
+**生成的脚本**：
+
+```python
+# test_cases/api/test_user_api_test.py
+# 运行方式: source .venv/bin/activate && pytest test_cases/ -v
+
+from atf.core.request_handler import RequestHandler
+
+class TestUserApiTest:
+    def test_user_api_test(self):
+        response = RequestHandler.send_request(
+            method="GET",
+            url=project_config["host"] + "/api/users/1",
+            headers=None,
+            data=None,
+            params=None,
+            files=None
+        )
+        assert response.status_code == 200
+```
+
+### 常见问题
+
+**Q: 测试脚本生成在哪里？**
+A: 默认生成到 `test_cases/` 目录，与 `tests/` 平行。
+
+**Q: 怎么运行测试？**
+A: 在项目根目录执行 `pytest test_cases/ -v`
+
+**Q: MCP 能帮我运行测试吗？**
+A: 目前 MCP 负责创建测试脚本，运行测试需要在终端手动执行。未来可以添加 `run_test` 工具。
+
+**Q: 需要把 `api-auto-test` 作为依赖吗？**
+A: 是的，用户项目需要安装 `api-auto-test` 包，才能导入 atf 框架。
