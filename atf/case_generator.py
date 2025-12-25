@@ -68,13 +68,13 @@ class CaseGenerator:
 	def generate_single(self, yaml_file: str, output_dir: str = None, base_dir: str = None, dry_run: bool = False) -> dict:
 		"""
 		生成单个测试用例，返回详细结果
-		
+
 		Args:
 			yaml_file: YAML 文件路径
 			output_dir: 输出目录
 			base_dir: 基准目录
 			dry_run: 是否仅预览，不实际写入
-			
+
 		Returns:
 			{
 				"success": bool,
@@ -95,21 +95,28 @@ class CaseGenerator:
 			"code_preview": None,
 			"error": None
 		}
-		
+
 		try:
+			# 计算基准目录
+			if base_dir is None:
+				base_dir = 'tests/cases'
+
+			# 计算相对路径（用于生成的代码中）
+			relative_yaml_path = os.path.relpath(yaml_file, base_dir)
+
 			# 加载 YAML
 			test_data_raw = self.load_test_data(yaml_file)
 			if not test_data_raw:
 				result["error"] = f"无法加载 YAML 文件: {yaml_file}"
 				return result
-				
+
 			if not self.validate_test_data(test_data_raw):
 				result["error"] = "YAML 数据校验不通过"
 				return result
-			
+
 			test_data = test_data_raw['testcase']
 			raw_name = test_data['name']
-			
+
 			# 名称处理
 			safe_name = sanitize_name(raw_name)
 			class_name = to_class_name(raw_name)
@@ -118,9 +125,9 @@ class CaseGenerator:
 				"safe": safe_name,
 				"class": class_name
 			}
-			
-			# 生成代码
-			code = self._generate_code(test_data, yaml_file, base_dir or 'tests/cases')
+
+			# 生成代码，使用相对路径
+			code = self._generate_code(test_data, relative_yaml_path)
 			
 			# 语法校验
 			syntax_valid, syntax_errors = check_python_syntax(code)
@@ -168,23 +175,22 @@ class CaseGenerator:
 		
 		return result
 	
-	def _generate_code(self, test_data: dict, yaml_file: str, base_dir: str) -> str:
-		"""生成 Python 测试代码字符串"""
+	def _generate_code(self, test_data: dict, relative_yaml_path: str) -> str:
+		"""生成 Python 测试代码字符串，使用相对路径"""
 		import io
-		
+
 		raw_name = test_data['name']
 		module_name = sanitize_name(raw_name)
 		module_class_name = to_class_name(raw_name)
 		description = test_data.get('description')
 		case_name = f"test_{module_name} ({description})" if description else f"test_{module_name}"
-		
+
 		teardowns = test_data.get('teardowns')
 		validate_teardowns = self.validate_teardowns(teardowns)
-		
-		# 计算 project_name
-		relative_path = os.path.relpath(yaml_file, base_dir)
-		path_components = relative_path.split(os.sep)
-		project_name = path_components[0] if path_components[0] else path_components[1]
+
+		# 计算 project_name（从相对路径中提取）
+		path_components = relative_yaml_path.split(os.sep)
+		project_name = path_components[0] if path_components[0] else (path_components[1] if len(path_components) > 1 else "")
 		
 		allure_epic = test_data.get("allure", {}).get("epic", project_name)
 		allure_feature = test_data.get("allure", {}).get("feature")
@@ -236,7 +242,8 @@ class CaseGenerator:
 		
 		f.write(f"    @staticmethod\n")
 		f.write(f"    def load_test_case_data():\n")
-		f.write(f"        with open(r'{yaml_file}', 'r', encoding='utf-8') as file:\n")
+		f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', '..', '{relative_yaml_path}')\n")
+		f.write(f"        with open(yaml_path, 'r', encoding='utf-8') as file:\n")
 		f.write(f"            test_case_data = yaml.safe_load(file)['testcase']\n")
 		f.write(f"        return test_case_data\n\n")
 		
@@ -397,7 +404,7 @@ class CaseGenerator:
 		# 生成测试用例文件的相对路径。yaml文件路径有多个层级时，获取项目名称，以及base_dir后、yaml文件名前的路径
 		relative_path = os.path.relpath(yaml_file, base_dir)
 		path_components = relative_path.split(os.sep)
-		project_name = path_components[0] if path_components[0] else path_components[1]
+		project_name = path_components[0] if path_components[0] else (path_components[1] if len(path_components) > 1 else "")
 		# 移除最后一个组件（文件名）
 		if path_components:
 			path_components.pop()  # 移除最后一个元素
@@ -496,7 +503,8 @@ class CaseGenerator:
 			
 			f.write(f"    @staticmethod\n")
 			f.write(f"    def load_test_case_data():\n")
-			f.write(f"        with open(r'{yaml_file}', 'r', encoding='utf-8') as file:\n")
+			f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', '..', '{relative_path}')\n")
+			f.write(f"        with open(yaml_path, 'r', encoding='utf-8') as file:\n")
 			f.write(f"            test_case_data = yaml.safe_load(file)['testcase']\n")
 			f.write(f"        return test_case_data\n\n")
 			
