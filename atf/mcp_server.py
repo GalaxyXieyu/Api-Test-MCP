@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -26,6 +27,7 @@ RESULTS_ROOT = REPO_ROOT / "test_results"
 
 # 测试执行结果存储（内存中）
 _test_execution_history: list[dict] = []
+_history_lock = threading.Lock()  # 保护 _test_execution_history 的线程锁
 
 mcp = FastMCP(name="api-auto-test-mcp")
 MCP_VERSION = "0.1.0"
@@ -259,6 +261,8 @@ class ListTestcasesResponse(BaseModel):
 
     status: Literal["ok", "error"]
     testcases: list[str]
+    error_message: str | None = None
+    error_details: dict | None = None
 
 
 class ReadTestcaseResponse(BaseModel):
@@ -268,6 +272,8 @@ class ReadTestcaseResponse(BaseModel):
     yaml_path: str
     mode: Literal["summary", "full"]
     testcase: dict[str, Any] | None
+    error_message: str | None = None
+    error_details: dict | None = None
 
 
 class ValidateTestcaseResponse(BaseModel):
@@ -282,6 +288,8 @@ class RegenerateResponse(BaseModel):
 
     status: Literal["ok", "error"]
     written_files: list[str]
+    error_message: str | None = None
+    error_details: dict | None = None
 
 
 class DeleteTestcaseResponse(BaseModel):
@@ -289,6 +297,8 @@ class DeleteTestcaseResponse(BaseModel):
 
     status: Literal["ok", "error"]
     deleted_files: list[str]
+    error_message: str | None = None
+    error_details: dict | None = None
 
 
 # ==================== 测试执行结果模型 ====================
@@ -327,6 +337,8 @@ class RunTestcaseResponse(BaseModel):
     yaml_path: str | None = None
     py_path: str | None = None
     result: TestResultModel | None = None
+    error_message: str | None = None
+    error_details: dict | None = None
 
 
 class BatchRunResponse(BaseModel):
@@ -572,7 +584,12 @@ def list_testcases(
         return ListTestcasesResponse(status="ok", testcases=testcases)
     except Exception as exc:
         log.error(f"MCP 列出测试用例失败: {exc}")
-        return ListTestcasesResponse(status="error", testcases=[])
+        return ListTestcasesResponse(
+            status="error",
+            testcases=[],
+            error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
+            error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
+        )
 
 
 @mcp.tool(
@@ -603,6 +620,20 @@ def read_testcase(
             mode=mode,
             testcase=summary,
         )
+    except ValidationError as exc:
+        log.error(f"MCP 读取测试用例参数验证失败: {exc}")
+        errors = [
+            f"{'.'.join(str(l) for l in err['loc'])}: {err['msg']} (类型: {err.get('type', 'unknown')})"
+            for err in exc.errors()
+        ]
+        return ReadTestcaseResponse(
+            status="error",
+            yaml_path=yaml_path,
+            mode=mode,
+            testcase=None,
+            error_message=f"参数验证失败: {exc}",
+            error_details={"error_type": "validation_error", "details": errors},
+        )
     except Exception as exc:
         log.error(f"MCP 读取测试用例失败: {exc}")
         return ReadTestcaseResponse(
@@ -610,6 +641,8 @@ def read_testcase(
             yaml_path=yaml_path,
             mode=mode,
             testcase=None,
+            error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
+            error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
         )
 
 
@@ -629,7 +662,7 @@ def validate_testcase(
         _parse_testcase_input(raw_data)
     except ValidationError as exc:
         errors = [
-            f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}"
+            f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']} (类型: {err.get('type', 'unknown')})"
             for err in exc.errors()
         ]
     except Exception as exc:
@@ -655,8 +688,9 @@ def regenerate_py(
         yaml_full_path, yaml_relative_path, repo_root = _resolve_yaml_path(yaml_path, workspace)
         os.chdir(repo_root)
         if not yaml_full_path.exists():
-            raise ValueError("YAML 文件不存在")
-        testcase_model = _parse_testcase_input(_load_yaml_file(yaml_full_path))
+            raise ValueError(f"YAML 文件不存在: {yaml_relative_path}")
+        raw_data = _load_yaml_file(yaml_full_path)
+        testcase_model = _parse_testcase_input(raw_data)
         py_full_path, py_relative_path = _expected_py_path(
             yaml_full_path=yaml_full_path,
             testcase_name=testcase_model.name,
@@ -666,14 +700,39 @@ def regenerate_py(
             py_full_path.unlink()
         CaseGenerator().generate_test_cases(project_yaml_list=[yaml_relative_path])
         if not py_full_path.exists():
-            raise ValueError("pytest 文件未生成")
+            raise ValueError("pytest 文件未生成，请检查测试用例数据格式是否正确")
         return RegenerateResponse(
             status="ok",
             written_files=[yaml_relative_path, py_relative_path],
         )
+    except ValidationError as exc:
+        log.error(f"MCP 重新生成 pytest 参数验证失败: {exc}")
+        errors = [
+            f"{'.'.join(str(l) for l in err['loc'])}: {err['msg']} (类型: {err.get('type', 'unknown')})"
+            for err in exc.errors()
+        ]
+        return RegenerateResponse(
+            status="error",
+            written_files=[],
+            error_message=f"参数验证失败: {exc}",
+            error_details={"error_type": "validation_error", "details": errors},
+        )
+    except ValueError as exc:
+        log.error(f"MCP 重新生成 pytest 业务验证失败: {exc}")
+        return RegenerateResponse(
+            status="error",
+            written_files=[],
+            error_message=str(exc),
+            error_details={"error_type": "value_error", "message": str(exc)},
+        )
     except Exception as exc:
         log.error(f"MCP 重新生成 pytest 失败: {exc}")
-        return RegenerateResponse(status="error", written_files=[])
+        return RegenerateResponse(
+            status="error",
+            written_files=[],
+            error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
+            error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
+        )
 
 
 @mcp.tool(
@@ -690,8 +749,9 @@ def delete_testcase(
     try:
         yaml_full_path, yaml_relative_path, _ = _resolve_yaml_path(yaml_path, workspace)
         if not yaml_full_path.exists():
-            raise ValueError("YAML 文件不存在")
-        testcase_model = _parse_testcase_input(_load_yaml_file(yaml_full_path))
+            raise ValueError(f"YAML 文件不存在: {yaml_relative_path}")
+        raw_data = _load_yaml_file(yaml_full_path)
+        testcase_model = _parse_testcase_input(raw_data)
         py_full_path, py_relative_path = _expected_py_path(
             yaml_full_path=yaml_full_path,
             testcase_name=testcase_model.name,
@@ -703,9 +763,34 @@ def delete_testcase(
             py_full_path.unlink()
             deleted_files.append(py_relative_path)
         return DeleteTestcaseResponse(status="ok", deleted_files=deleted_files)
+    except ValidationError as exc:
+        log.error(f"MCP 删除测试用例参数验证失败: {exc}")
+        errors = [
+            f"{'.'.join(str(l) for l in err['loc'])}: {err['msg']} (类型: {err.get('type', 'unknown')})"
+            for err in exc.errors()
+        ]
+        return DeleteTestcaseResponse(
+            status="error",
+            deleted_files=[],
+            error_message=f"参数验证失败: {exc}",
+            error_details={"error_type": "validation_error", "details": errors},
+        )
+    except ValueError as exc:
+        log.error(f"MCP 删除测试用例业务验证失败: {exc}")
+        return DeleteTestcaseResponse(
+            status="error",
+            deleted_files=[],
+            error_message=str(exc),
+            error_details={"error_type": "value_error", "message": str(exc)},
+        )
     except Exception as exc:
         log.error(f"MCP 删除测试用例失败: {exc}")
-        return DeleteTestcaseResponse(status="error", deleted_files=[])
+        return DeleteTestcaseResponse(
+            status="error",
+            deleted_files=[],
+            error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
+            error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
+        )
 
 
 @mcp.tool(
@@ -875,17 +960,45 @@ def write_unittest(
 
 
 def _get_python_path(repo_root: Path) -> str:
-    """获取项目 venv 的 Python 路径"""
-    # 优先使用 uv run
+    """
+    获取项目可用的 Python 解释器路径。
+
+    优先级顺序:
+    1. uv run (当项目包含 pyproject.toml 且 uv 可用时)
+    2. .venv/bin/python (venv 虚拟环境)
+    3. .conda/bin/python (conda 虚拟环境)
+    4. sys.executable (系统 Python 解释器作为回退)
+
+    Args:
+        repo_root: 项目根目录路径
+
+    Returns:
+        str: Python 解释器路径或 'uv' 命令字串
+    """
+    import shutil
+
+    # 优先使用 uv run (需要 pyproject.toml 且 uv 可用)
     if (repo_root / "pyproject.toml").exists():
-        return "uv"
+        uv_path = shutil.which("uv")
+        if uv_path:
+            log.info(f"使用 uv 运行测试")
+            return "uv"
+        log.warning("pyproject.toml 存在但 uv 未安装，回退到其他 Python 解释器")
 
     # 查找 venv 路径
     venv_python = repo_root / ".venv" / "bin" / "python"
-    if venv_python.exists():
+    if venv_python.exists() and os.access(venv_python, os.X_OK):
+        log.info(f"使用 .venv Python: {venv_python}")
         return str(venv_python)
 
+    # Conda 环境检测
+    conda_python = repo_root / ".conda" / "bin" / "python"
+    if conda_python.exists() and os.access(conda_python, os.X_OK):
+        log.info(f"使用 conda Python: {conda_python}")
+        return str(conda_python)
+
     # 回退到系统 Python
+    log.warning(f"未找到项目 Python 解释器，回退到系统 Python: {sys.executable}")
     return sys.executable
 
 
@@ -920,7 +1033,26 @@ def _run_pytest(pytest_path: str, repo_root: Path) -> dict:
             stderr=subprocess.PIPE,
             text=True,
         )
-        stdout, stderr = process.communicate()
+        try:
+            stdout, stderr = process.communicate(timeout=300)  # 5分钟超时
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            result_data["error_message"] = "测试执行超时（超过5分钟）"
+            result_data["traceback"] = "进程被强制终止"
+            end_time = time.time()
+            result_data["duration"] = round(end_time - start_time, 2)
+            return result_data
+        finally:
+            # 确保进程已终止并清理资源
+            if process.returncode is None:
+                process.kill()
+            process.wait()
+            if process.stdout:
+                process.stdout.close()
+            if process.stderr:
+                process.stderr.close()
+
         end_time = time.time()
         duration = round(end_time - start_time, 2)
 
@@ -999,6 +1131,8 @@ def run_testcase(
                 yaml_path=None,
                 py_path=None,
                 result=None,
+                error_message="未知的测试用例格式",
+                error_details={"error_type": "format_error", "message": "YAML 文件既不是 unittest 也不是 testcase 格式"},
             )
 
         py_full_path, py_relative_path = _expected_py_path(
@@ -1014,6 +1148,8 @@ def run_testcase(
                 yaml_path=yaml_relative_path,
                 py_path=None,
                 result=None,
+                error_message=f"pytest 文件不存在，请先调用 write_unittest 或 write_testcase 生成: {py_relative_path}",
+                error_details={"error_type": "file_not_found", "py_path": py_relative_path},
             )
 
         # 执行测试
@@ -1038,6 +1174,21 @@ def run_testcase(
             py_path=py_relative_path,
             result=result,
         )
+    except ValidationError as exc:
+        log.error(f"MCP 执行测试用例参数验证失败: {exc}")
+        errors = [
+            f"{'.'.join(str(l) for l in err['loc'])}: {err['msg']} (类型: {err.get('type', 'unknown')})"
+            for err in exc.errors()
+        ]
+        return RunTestcaseResponse(
+            status="error",
+            test_name="",
+            yaml_path=None,
+            py_path=None,
+            result=None,
+            error_message=f"参数验证失败: {exc}",
+            error_details={"error_type": "validation_error", "details": errors},
+        )
     except Exception as exc:
         log.error(f"MCP 执行测试用例失败: {exc}")
         return RunTestcaseResponse(
@@ -1046,6 +1197,8 @@ def run_testcase(
             yaml_path=None,
             py_path=None,
             result=None,
+            error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
+            error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
         )
 
 
@@ -1130,18 +1283,22 @@ def run_testcases(
     failed = sum(1 for r in results if r.status == "failed")
     skipped = sum(1 for r in results if r.status == "skipped")
 
-    # 保存到历史记录
+    # 保存到历史记录（线程安全）
     run_id = str(uuid.uuid4())[:8]
-    _test_execution_history.append({
-        "run_id": run_id,
-        "timestamp": datetime.now().isoformat(),
-        "total": len(results),
-        "passed": passed,
-        "failed": failed,
-        "skipped": skipped,
-        "duration": duration,
-        "test_names": [r.test_name for r in results],
-    })
+    with _history_lock:
+        _test_execution_history.append({
+            "run_id": run_id,
+            "timestamp": datetime.now().isoformat(),
+            "total": len(results),
+            "passed": passed,
+            "failed": failed,
+            "skipped": skipped,
+            "duration": duration,
+            "test_names": [r.test_name for r in results],
+        })
+        # 添加容量限制，防止内存溢出
+        if len(_test_execution_history) > 1000:
+            _test_execution_history = _test_execution_history[-1000:]
 
     return BatchRunResponse(
         status="ok" if failed == 0 else "error",
@@ -1215,8 +1372,9 @@ def get_test_results(
     global _test_execution_history
 
     try:
-        # 返回最近的记录
-        recent = _test_execution_history[-limit:] if limit > 0 else _test_execution_history
+        # 返回最近的记录（线程安全读取）
+        with _history_lock:
+            recent = _test_execution_history[-limit:] if limit > 0 else _test_execution_history
 
         results = [
             TestResultHistoryModel(
