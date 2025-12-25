@@ -260,7 +260,18 @@ def register_testcase_tools(mcp: FastMCP) -> None:
             if overwrite and py_full_path.exists():
                 py_full_path.unlink()
 
-            CaseGenerator().generate_test_cases(project_yaml_list=[yaml_relative_path])
+            # 计算 base_dir：YAML 文件所在目录的父目录（即 tests 目录）
+            yaml_dir = yaml_full_path.parent
+            tests_root = repo_root / "tests"
+            if yaml_dir.is_relative_to(tests_root):
+                base_dir = str(yaml_dir.relative_to(repo_root))
+            else:
+                base_dir = str(yaml_dir)
+
+            CaseGenerator().generate_test_cases(
+                project_yaml_list=[yaml_relative_path],
+                base_dir=base_dir
+            )
             if not py_full_path.exists():
                 raise ValueError("pytest 文件未生成，请检查测试用例数据格式")
 

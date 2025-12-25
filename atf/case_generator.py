@@ -10,45 +10,52 @@ class CaseGenerator:
 	"""
 	测试用例文件生成器
 	"""
-	def generate_test_cases(self, project_yaml_list=None, output_dir=None):
+	def generate_test_cases(self, project_yaml_list=None, output_dir=None, base_dir=None):
 		"""
 		根据YAML文件生成测试用例并保存到指定目录
 		:param project_yaml_list: 列表形式，项目名称或YAML文件路径
 		:param output_dir: 测试用例文件生成目录
+		:param base_dir: 基准目录，用于计算相对路径，默认 'tests'
 		"""
 		# 如果没有传入project_yaml_list，默认遍历tests目录下所有project
 		if not project_yaml_list:
 			project_yaml_list = ["tests/"]
-		
+
+		# 基准目录，用于计算相对路径
+		if base_dir is None:
+			base_dir = 'tests'
+
 		# 遍历传入的project_yaml_list
 		for item in project_yaml_list:
-			if os.path.isdir(item):  # 如果是项目目录，如tests/merchant
-				self._process_project_dir(item, output_dir)
+			if os.path.isdir(item):  # 如果是项目目录，如 tests/merchant
+				self._process_project_dir(item, output_dir, base_dir)
 			elif os.path.isfile(item) and item.endswith('.yaml'):  # 如果是单个YAML文件
-				self._process_single_yaml(item, output_dir)
-			else:  # 如果是项目名称，如merchant
+				self._process_single_yaml(item, output_dir, base_dir)
+			else:  # 如果是项目名称，如 merchant
 				project_dir = os.path.join("tests", item)
-				self._process_project_dir(project_dir, output_dir)
+				self._process_project_dir(project_dir, output_dir, base_dir)
 		
 		log.info("Test automation framework execution completed")
 	
-	def _process_project_dir(self, project_dir, output_dir):
+	def _process_project_dir(self, project_dir, output_dir, base_dir='tests'):
 		"""
 		处理项目目录，遍历项目下所有YAML文件生成测试用例
 		:param project_dir: 项目目录路径
 		:param output_dir: 测试用例文件生成目录
+		:param base_dir: 基准目录，用于计算相对路径
 		"""
 		for root, dirs, files in os.walk(project_dir):
 			for file in files:
 				if file.endswith('.yaml'):
 					yaml_file = os.path.join(root, file)
-					self._process_single_yaml(yaml_file, output_dir)
+					self._process_single_yaml(yaml_file, output_dir, base_dir)
 	
-	def _process_single_yaml(self, yaml_file, output_dir):
+	def _process_single_yaml(self, yaml_file, output_dir, base_dir='tests'):
 		"""
 		处理单个YAML文件，生成对应的测试用例文件
 		:param yaml_file: YAML文件路径
 		:param output_dir: 测试用例文件生成目录
+		:param base_dir: 基准目录，用于计算相对路径
 		"""
 		# 读取YAML文件内容
 		_test_data = self.load_test_data(yaml_file)
@@ -59,9 +66,9 @@ class CaseGenerator:
 		test_data = _test_data['testcase']
 		teardowns = test_data.get('teardowns')
 		validate_teardowns = self.validate_teardowns(teardowns)
-		
-		# 生成测试用例文件的相对路径。yaml文件路径有多个层级时，获取项目名称，以及tests/后、yaml文件名前的路径
-		relative_path = os.path.relpath(yaml_file, 'tests')
+
+		# 生成测试用例文件的相对路径。yaml文件路径有多个层级时，获取项目名称，以及base_dir后、yaml文件名前的路径
+		relative_path = os.path.relpath(yaml_file, base_dir)
 		path_components = relative_path.split(os.sep)
 		project_name = path_components[0] if path_components[0] else path_components[1]
 		# 移除最后一个组件（文件名）

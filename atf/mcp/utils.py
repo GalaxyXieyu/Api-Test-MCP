@@ -86,8 +86,15 @@ def expected_py_path(
     """返回 (py_full_path, py_relative_path)"""
     _, tests_root, test_cases_root = get_roots(workspace)
     repo_root = tests_root.parent
-    relative_to_tests = yaml_full_path.relative_to(tests_root)
-    directory_path = relative_to_tests.parent
+
+    # 如果 YAML 在 tests 目录下，保持原有逻辑
+    if yaml_full_path.is_relative_to(tests_root):
+        relative_to_tests = yaml_full_path.relative_to(tests_root)
+        directory_path = relative_to_tests.parent
+    else:
+        # 如果 YAML 在其他目录，直接用 test_cases_root
+        directory_path = Path(".")
+
     py_filename = f"test_{testcase_name}.py"
     py_full_path = (test_cases_root / directory_path / py_filename).resolve(strict=False)
     py_relative_path = py_full_path.relative_to(repo_root).as_posix()
