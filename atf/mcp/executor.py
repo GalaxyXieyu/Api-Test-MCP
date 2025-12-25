@@ -264,10 +264,16 @@ def run_pytest(pytest_path: str, repo_root: Path, python_path: str | None = None
 
         # 构建 pytest 命令（使用 pytest-html 生成报告，无需 Java）
         report_path = _get_report_path(repo_root)
+        css_path = _ATF_ROOT / "atf" / "assets" / "report.css"
+        
+        base_args = [pytest_path, "-v", "--tb=short", f"--html={report_path}", "--self-contained-html"]
+        if css_path.exists():
+            base_args.append(f"--css={css_path}")
+        
         if python_path == "uv":
-            cmd = ["uv", "run", "pytest", pytest_path, "-v", "--tb=short", f"--html={report_path}", "--self-contained-html"]
+            cmd = ["uv", "run", "pytest"] + base_args
         else:
-            cmd = [python_path, "-m", "pytest", pytest_path, "-v", "--tb=short", f"--html={report_path}", "--self-contained-html"]
+            cmd = [python_path, "-m", "pytest"] + base_args
 
         log.info(f"执行测试命令: {' '.join(cmd)}")
 

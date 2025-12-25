@@ -4,15 +4,37 @@
 import time
 from datetime import datetime
 from atf.core.globals import Globals
+import pytest
+
+
+# ==================== pytest-html 报告配置 ====================
+
+def pytest_configure(config):
+    """配置 pytest-html 元数据"""
+    config._metadata = getattr(config, '_metadata', {}) or {}
+    config._metadata["项目"] = "API Auto Test Framework"
+    config._metadata["框架"] = "pytest + pytest-html"
+
+
+def pytest_html_report_title(report):
+    """设置报告标题"""
+    report.title = "API 自动化测试报告"
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """为测试结果添加描述信息"""
+    outcome = yield
+    report = outcome.get_result()
+    report.description = str(item.function.__doc__ or "")
+
+
+# ==================== 测试结果收集 ====================
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
-    '''
-    获取用例执行结果，并发送钉钉消息
-    :param terminalreporter:
-    :param exitstatus:
-    :param config:
-    :return:
-    '''
+    """
+    获取用例执行结果，保存到全局变量
+    """
     total = terminalreporter._numcollected
     passed = len([i for i in terminalreporter.stats.get("passed", []) if i.when != "teardown"])
     failed = len([i for i in terminalreporter.stats.get("failed", []) if i.when != "teardown"])
@@ -30,7 +52,6 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     elif not failed and error:
         conclusion = "执行失败，包含报错用例！"
 
-    # 将测试结果保存到全局变量 Globals 以供 `run_tests.py` 使用
     results = {
         "conclusion": conclusion,
         "total": total,

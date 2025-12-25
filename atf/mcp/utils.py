@@ -79,12 +79,15 @@ def resolve_tests_root(
     root_path: str | None = None, workspace: str | None = None
 ) -> tuple[Path, Path]:
     """返回 (resolved_cases_root, repo_root)
-    
-    默认返回 tests/cases/ 目录
+
+    默认返回 tests/cases/ 目录，如果目录不存在会自动创建
     """
     repo_root, _, cases_root, _ = get_roots(workspace)
     cases_root_resolved = cases_root.resolve(strict=False)
     if not root_path:
+        # 默认目录不存在则自动创建
+        if not cases_root_resolved.exists():
+            cases_root_resolved.mkdir(parents=True, exist_ok=True)
         return cases_root_resolved, repo_root
     raw_path = Path(root_path)
     if raw_path.is_absolute():
@@ -93,8 +96,11 @@ def resolve_tests_root(
         normalized = (repo_root / raw_path).resolve(strict=False)
     if not normalized.is_relative_to(repo_root):
         raise ValueError(f"root_path 必须在项目目录 {repo_root} 下")
-    if not normalized.exists() or not normalized.is_dir():
-        raise ValueError("root_path 必须是已存在的目录")
+    # 目录不存在则自动创建
+    if not normalized.exists():
+        normalized.mkdir(parents=True, exist_ok=True)
+    if not normalized.is_dir():
+        raise ValueError("root_path 必须是目录")
     return normalized, repo_root
 
 
