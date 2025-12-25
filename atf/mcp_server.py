@@ -897,28 +897,46 @@ def _run_pytest(pytest_path: str, repo_root: Path) -> dict:
 
 @mcp.tool(
     name="run_testcase",
-    title="执行单个测试用例",
-    description="执行指定的 YAML 测试用例（需先有对应的 pytest 脚本），返回执行结果和断言详情。",
+    title="执行测试用例",
+    description="执行单个 YAML 测试用例（支持集成测试 testcase 和单元测试 unittest），返回执行结果和断言详情。",
 )
 def run_testcase(
     yaml_path: str,
     workspace: str | None = None,
 ) -> RunTestcaseResponse:
-    """执行单个测试用例"""
+    """执行单个测试用例（支持 testcase 和 unittest）"""
     try:
         yaml_full_path, yaml_relative_path, repo_root = _resolve_yaml_path(yaml_path, workspace)
-        testcase_model = _parse_testcase_input(_load_yaml_file(yaml_full_path))
+        yaml_data = _load_yaml_file(yaml_full_path)
+
+        # 自动检测类型
+        if "unittest" in yaml_data:
+            # 单元测试
+            testcase_model = _parse_unittest_input(yaml_data)
+            test_name = testcase_model.name
+        elif "testcase" in yaml_data:
+            # 集成测试
+            testcase_model = _parse_testcase_input(yaml_data)
+            test_name = testcase_model.name
+        else:
+            return RunTestcaseResponse(
+                status="error",
+                test_name="",
+                yaml_path=None,
+                py_path=None,
+                result=None,
+            )
 
         py_full_path, py_relative_path = _expected_py_path(
             yaml_full_path=yaml_full_path,
-            testcase_name=testcase_model.name,
+            testcase_name=test_name,
             workspace=workspace,
         )
 
         if not py_full_path.exists():
             return RunTestcaseResponse(
                 status="error",
-                test_name=testcase_model.name,
+                test_name=test_name,
                 yaml_path=yaml_relative_path,
                 py_path=None,
                 result=None,
@@ -941,7 +959,7 @@ def run_testcase(
 
         return RunTestcaseResponse(
             status="ok",
-            test_name=testcase_model.name,
+            test_name=test_name,
             yaml_path=yaml_relative_path,
             py_path=py_relative_path,
             result=result,

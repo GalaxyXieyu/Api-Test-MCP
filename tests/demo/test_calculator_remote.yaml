@@ -1,0 +1,18 @@
+unittest:
+  name: test_calculator_remote
+  description: 远程测试计算器功能
+  env_type: uv
+  target:
+    module: demo_calculator
+    function: add
+  cases:
+  - id: test_add_remote
+    description: 测试远程加法
+    inputs:
+      args:
+      - 7
+      - 3
+    assert:
+    - type: equals
+      field: result
+      expected: 10
