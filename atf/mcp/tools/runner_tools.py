@@ -45,7 +45,25 @@ def register_runner_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="run_testcase",
         title="执行测试用例",
-        description="执行单个 YAML 测试用例（支持集成测试 testcase 和单元测试 unittest），返回执行结果和断言详情。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
+        description="执行单个 YAML 测试用例（支持集成测试 testcase 和单元测试 unittest），返回执行结果和断言详情。\n\n"
+        "**执行流程**:\n"
+        "1. 读取 YAML 测试用例\n"
+        "2. 找到对应的 pytest 脚本（test_xxx.py）\n"
+        "3. 执行 pytest 并收集结果\n\n"
+        "**参数说明**:\n"
+        "- `yaml_path`: YAML 文件路径（相对于 workspace）\n"
+        "- `workspace`: **必须**，指定项目根目录\n\n"
+        "**返回值说明**:\n"
+        "- `status`: ok | error\n"
+        "- `result.status`: passed | failed | error | skipped\n"
+        "- `result.assertions`: 断言结果数组，包含每个断言的详细信息\n\n"
+        "示例:\n"
+        "```json\n"
+        "{\n"
+        "  \"yaml_path\": \"tests/auth_integration.yaml\",\n"
+        "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
+        "}\n"
+        "```",
     )
     def run_testcase(
         yaml_path: str,
@@ -129,7 +147,28 @@ def register_runner_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="run_testcases",
         title="批量执行测试用例",
-        description="批量执行指定的 YAML 测试用例，支持目录和文件模式，返回汇总统计和每个用例的详细结果。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
+        description="批量执行指定的 YAML 测试用例，支持目录和文件模式，返回汇总统计和每个用例的详细结果。\n\n"
+        "**使用场景**:\n"
+        "- 执行某个目录下的所有测试用例\n"
+        "- 执行所有集成测试或单元测试\n"
+        "- 获取整体测试通过率\n\n"
+        "**参数说明**:\n"
+        "- `root_path`: 可选，指定执行的目录，默认执行 workspace/tests\n"
+        "- `test_type`: `all`(全部) | `integration`(集成) | `unit`(单元)\n"
+        "- `workspace`: **必须**，指定项目根目录\n\n"
+        "**返回值说明**:\n"
+        "- `total`: 总用例数\n"
+        "- `passed/failed/skipped`: 通过/失败/跳过数量\n"
+        "- `duration`: 执行耗时（秒）\n"
+        "- `results`: 每个用例的详细执行结果\n\n"
+        "示例:\n"
+        "```json\n"
+        "{\n"
+        "  \"root_path\": \"tests\",\n"
+        "  \"test_type\": \"integration\",\n"
+        "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
+        "}\n"
+        "```",
     )
     def run_testcases(
         root_path: str | None = None,
@@ -243,7 +282,22 @@ def register_runner_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="get_test_results",
         title="获取测试执行历史",
-        description="获取测试执行历史记录，包括每次运行的统计信息和测试用例列表。",
+        description="获取测试执行历史记录，包括每次运行的统计信息和测试用例列表。\n\n"
+        "**返回值说明**:\n"
+        "- `history`: 历史记录数组，每条记录包含:\n"
+        "  - `run_id`: 运行 ID\n"
+        "  - `total`: 总用例数\n"
+        "  - `passed/failed/skipped`: 通过/失败/跳过数量\n"
+        "  - `duration`: 执行耗时\n"
+        "  - `timestamp`: 执行时间\n\n"
+        "**参数说明**:\n"
+        "- `limit`: 可选，返回记录数量，默认 10 条\n\n"
+        "示例:\n"
+        "```json\n"
+        "{\n"
+        "  \"limit\": 20\n"
+        "}\n"
+        "```",
     )
     def get_test_results(
         limit: int = 10,

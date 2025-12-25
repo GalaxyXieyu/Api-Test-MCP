@@ -38,7 +38,21 @@ def register_testcase_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="list_testcases",
         title="列出测试用例 YAML",
-        description="列出指定目录下的 YAML 测试用例文件。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。\n\n示例: workspace='/Volumes/DATABASE/code/glam-cart/backend'",
+        description="列出指定目录下的 YAML 测试用例文件，支持以下类型：\n\n"
+        "- **集成测试 (testcase)**: API 接口测试，YAML 顶层为 `testcase`\n"
+        "- **单元测试 (unittest)**: 单元测试，YAML 顶层为 `unittest`\n\n"
+        "**参数说明**:\n"
+        "- `root_path`: 可选，指定扫描目录，默认扫描 workspace/tests\n"
+        "- `test_type`: `all`(全部) | `integration`(集成) | `unit`(单元)\n"
+        "- `workspace`: **必须**，指定项目根目录\n\n"
+        "示例:\n"
+        "```json\n"
+        "{\n"
+        "  \"root_path\": \"tests\",\n"
+        "  \"test_type\": \"integration\",\n"
+        "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
+        "}\n"
+        "```",
     )
     def list_testcases(
         root_path: str | None = None,
@@ -83,7 +97,19 @@ def register_testcase_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="read_testcase",
         title="读取测试用例内容",
-        description="读取指定 YAML 测试用例内容，默认返回摘要。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
+        description="读取指定 YAML 测试用例内容，返回摘要或完整结构。\n\n"
+        "**参数说明**:\n"
+        "- `yaml_path`: YAML 文件路径（相对于 workspace）\n"
+        "- `mode`: `summary`(摘要，只返回 name/steps/teardowns) | `full`(完整，返回原始 YAML)\n"
+        "- `workspace`: **必须**，指定项目根目录\n\n"
+        "示例:\n"
+        "```json\n"
+        "{\n"
+        "  \"yaml_path\": \"tests/auth_integration.yaml\",\n"
+        "  \"mode\": \"summary\",\n"
+        "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
+        "}\n"
+        "```",
     )
     def read_testcase(
         yaml_path: str,
@@ -132,7 +158,20 @@ def register_testcase_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="validate_testcase",
         title="校验测试用例结构",
-        description="校验指定 YAML 测试用例结构是否符合规范。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
+        description="校验指定 YAML 测试用例结构是否符合规范，返回错误列表。\n\n"
+        "**参数说明**:\n"
+        "- `yaml_path`: YAML 文件路径（相对于 workspace）\n"
+        "- `workspace`: **必须**，指定项目根目录\n\n"
+        "**返回值**:\n"
+        "- `status: ok`: 校验通过\n"
+        "- `status: error`: 校验失败，errors 数组包含具体错误信息\n\n"
+        "示例:\n"
+        "```json\n"
+        "{\n"
+        "  \"yaml_path\": \"tests/auth_integration.yaml\",\n"
+        "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
+        "}\n"
+        "```",
     )
     def validate_testcase(
         yaml_path: str,
@@ -264,7 +303,22 @@ def register_testcase_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="regenerate_py",
         title="重新生成 pytest 文件",
-        description="根据已存在的 YAML 测试用例重新生成 pytest 脚本。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
+        description="根据已存在的 YAML 测试用例重新生成 pytest 脚本。\n\n"
+        "**使用场景**:\n"
+        "- YAML 文件已存在但 py 脚本丢失或损坏\n"
+        "- 修改了 YAML 需要重新生成对应的 pytest 脚本\n\n"
+        "**参数说明**:\n"
+        "- `yaml_path`: YAML 文件路径（相对于 workspace）\n"
+        "- `overwrite`: 默认 true，覆盖已存在的 py 文件\n"
+        "- `workspace`: **必须**，指定项目根目录\n\n"
+        "示例:\n"
+        "```json\n"
+        "{\n"
+        "  \"yaml_path\": \"tests/auth_integration.yaml\",\n"
+        "  \"overwrite\": true,\n"
+        "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
+        "}\n"
+        "```",
     )
     def regenerate_py(
         yaml_path: str,
@@ -319,7 +373,22 @@ def register_testcase_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="delete_testcase",
         title="删除测试用例",
-        description="删除 YAML 与对应的 pytest 文件。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
+        description="删除 YAML 与对应的 pytest 文件。\n\n"
+        "**注意**:\n"
+        "- 删除操作不可恢复，请确认后再执行\n"
+        "- 默认同时删除 YAML 和生成的 py 文件\n\n"
+        "**参数说明**:\n"
+        "- `yaml_path`: YAML 文件路径（相对于 workspace）\n"
+        "- `delete_py`: 默认 true，同时删除对应的 py 文件\n"
+        "- `workspace`: **必须**，指定项目根目录\n\n"
+        "示例:\n"
+        "```json\n"
+        "{\n"
+        "  \"yaml_path\": \"tests/auth_integration.yaml\",\n"
+        "  \"delete_py\": true,\n"
+        "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
+        "}\n"
+        "```",
     )
     def delete_testcase(
         yaml_path: str,
