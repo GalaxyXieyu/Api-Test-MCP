@@ -38,7 +38,7 @@ def register_testcase_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="list_testcases",
         title="列出测试用例 YAML",
-        description="列出 tests 目录下的 YAML 测试用例文件，可指定子目录和测试类型过滤。",
+        description="列出指定目录下的 YAML 测试用例文件。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。\n\n示例: workspace='/Volumes/DATABASE/code/glam-cart/backend'",
     )
     def list_testcases(
         root_path: str | None = None,
@@ -83,7 +83,7 @@ def register_testcase_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="read_testcase",
         title="读取测试用例内容",
-        description="读取指定 YAML 测试用例内容，默认返回摘要。",
+        description="读取指定 YAML 测试用例内容，默认返回摘要。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
     )
     def read_testcase(
         yaml_path: str,
@@ -132,7 +132,7 @@ def register_testcase_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="validate_testcase",
         title="校验测试用例结构",
-        description="校验指定 YAML 测试用例结构是否符合规范。",
+        description="校验指定 YAML 测试用例结构是否符合规范。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
     )
     def validate_testcase(
         yaml_path: str,
@@ -156,7 +156,7 @@ def register_testcase_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="write_testcase",
         title="写入测试用例并生成 pytest 脚本",
-        description="根据输入的测试用例结构写入 YAML 文件，并生成对应的 pytest 用例脚本。",
+        description="根据输入的测试用例结构写入 YAML 文件，并生成对应的 pytest 用例脚本。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
     )
     def write_testcase(
         yaml_path: str,
@@ -234,7 +234,7 @@ def register_testcase_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="regenerate_py",
         title="重新生成 pytest 文件",
-        description="根据已存在的 YAML 测试用例重新生成 pytest 脚本。",
+        description="根据已存在的 YAML 测试用例重新生成 pytest 脚本。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
     )
     def regenerate_py(
         yaml_path: str,
@@ -289,7 +289,7 @@ def register_testcase_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="delete_testcase",
         title="删除测试用例",
-        description="删除 YAML 与对应的 pytest 文件。",
+        description="删除 YAML 与对应的 pytest 文件。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
     )
     def delete_testcase(
         yaml_path: str,

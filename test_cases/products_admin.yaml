@@ -1,0 +1,110 @@
+name: Products 管理接口模块
+description: 测试产品的增删改和图片管理功能
+steps:
+  - id: login_admin
+    path: /api/auth/login
+    method: POST
+    headers:
+      Content-Type: application/json
+    data:
+      username: admin
+      password: password
+    assert:
+      - type: status_code
+        expected: 200
+
+  - id: create_product
+    path: /api/products
+    method: POST
+    headers:
+      Authorization: "Bearer {{ login_admin.data.token }}"
+      Content-Type: application/json
+    data:
+      name: Test Product
+      code: TEST001
+      description: A test product
+      tube_type: 口红管
+      functional_designs: ["磁吸"]
+      shape: 圆形
+      material: PETG
+      dimensions:
+        weight: 15.5
+        length: 10.2
+        width: 2.1
+        height: 2.1
+        capacity: {"min": 3.5, "max": 4.0}
+      cost_price: 2.50
+      factory_price: 1.80
+      has_sample: true
+      box_dimensions: 50x30x20cm
+      box_quantity: 100
+      in_stock: true
+      popularity_score: 85
+    assert:
+      - type: status_code
+        expected: 200
+      - type: field
+        field: success
+        expected: true
+      - type: field
+        field: data.id
+        expected_exists: true
+
+  - id: get_product_detail
+    path: /api/products/{{ create_product.data.data.id }}
+    method: GET
+    headers:
+      Authorization: "Bearer {{ login_admin.data.token }}"
+    assert:
+      - type: status_code
+        expected: 200
+      - type: field
+        field: success
+        expected: true
+
+  - id: update_product
+    path: /api/products/{{ create_product.data.data.id }}
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ login_admin.data.token }}"
+      Content-Type: application/json
+    data:
+      name: Updated Product Name
+      description: Updated description
+    assert:
+      - type: status_code
+        expected: 200
+      - type: field
+        field: success
+        expected: true
+
+  - id: delete_product
+    path: /api/products/{{ create_product.data.data.id }}
+    method: DELETE
+    headers:
+      Authorization: "Bearer {{ login_admin.data.token }}"
+    assert:
+      - type: status_code
+        expected: 200
+      - type: field
+        field: success
+        expected: true
+
+  - id: get_nonexistent_product
+    path: /api/products/999999
+    method: GET
+    assert:
+      - type: status_code
+        expected: 404
+
+  - id: create_product_unauthorized
+    path: /api/products
+    method: POST
+    headers:
+      Content-Type: application/json
+    data:
+      name: Unauthorized Product
+      code: UNAUTH001
+    assert:
+      - type: status_code
+        expected: 401

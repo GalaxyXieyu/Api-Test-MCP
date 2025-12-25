@@ -45,7 +45,7 @@ def register_runner_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="run_testcase",
         title="执行测试用例",
-        description="执行单个 YAML 测试用例（支持集成测试 testcase 和单元测试 unittest），返回执行结果和断言详情。",
+        description="执行单个 YAML 测试用例（支持集成测试 testcase 和单元测试 unittest），返回执行结果和断言详情。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
     )
     def run_testcase(
         yaml_path: str,
@@ -129,7 +129,7 @@ def register_runner_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="run_testcases",
         title="批量执行测试用例",
-        description="批量执行指定的 YAML 测试用例，支持目录和文件模式，返回汇总统计和每个用例的详细结果。",
+        description="批量执行指定的 YAML 测试用例，支持目录和文件模式，返回汇总统计和每个用例的详细结果。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
     )
     def run_testcases(
         root_path: str | None = None,

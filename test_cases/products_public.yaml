@@ -1,0 +1,45 @@
+name: Products 公开接口模块
+description: 测试产品公开接口的列表、详情、精选和筛选功能
+steps:
+  - id: get_product_list
+    path: /api/products
+    method: GET
+    assert:
+      - type: status_code
+        expected: 200
+      - type: field
+        field: success
+        expected: true
+      - type: field
+        field: data.items
+        expected_exists: true
+
+  - id: get_product_list_with_pagination
+    path: /api/products?page=1&page_size=10
+    method: GET
+    assert:
+      - type: status_code
+        expected: 200
+      - type: field
+        field: data.items
+        expected_exists: true
+
+  - id: get_filter_options
+    path: /api/products/filter-options
+    method: GET
+    assert:
+      - type: status_code
+        expected: 200
+      - type: field
+        field: success
+        expected: true
+
+  - id: get_featured_products
+    path: /api/products/featured
+    method: GET
+    assert:
+      - type: status_code
+        expected: 200
+      - type: field
+        field: success
+        expected: true

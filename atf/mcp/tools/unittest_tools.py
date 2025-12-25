@@ -25,7 +25,7 @@ def register_unittest_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="write_unittest",
         title="写入单元测试用例并生成 pytest 脚本",
-        description="根据输入的单元测试结构写入 YAML 文件，并生成对应的 pytest 单元测试脚本。",
+        description="根据输入的单元测试结构写入 YAML 文件，并生成对应的 pytest 单元测试脚本。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
     )
     def write_unittest(
         yaml_path: str,

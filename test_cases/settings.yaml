@@ -1,0 +1,52 @@
+name: Settings 系统设置模块
+description: 测试系统设置的获取和更新功能
+steps:
+  - id: get_settings_public
+    path: /api/settings
+    method: GET
+    assert:
+      - type: status_code
+        expected: 200
+      - type: field
+        field: success
+        expected: true
+
+  - id: login_admin
+    path: /api/auth/login
+    method: POST
+    headers:
+      Content-Type: application/json
+    data:
+      username: admin
+      password: password
+    assert:
+      - type: status_code
+        expected: 200
+
+  - id: update_settings
+    path: /api/settings
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ login_admin.data.token }}"
+      Content-Type: application/json
+    data:
+      site_name: Glam Cart Store
+      site_description: Official Store
+      contact_email: test@example.com
+    assert:
+      - type: status_code
+        expected: 200
+      - type: field
+        field: success
+        expected: true
+
+  - id: update_settings_unauthorized
+    path: /api/settings
+    method: PUT
+    headers:
+      Content-Type: application/json
+    data:
+      site_name: Unauthorized
+    assert:
+      - type: status_code
+        expected: 401
