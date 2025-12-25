@@ -26,5 +26,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["atf"]
 
+[dependency-groups.dev]
+
 [tool.uv]
-dev-dependencies = []

@@ -12,11 +12,12 @@ from atf.core.log_manager import log
 class UnitCaseGenerator:
     """单元测试用例文件生成器"""
 
-    def generate_unit_tests(self, yaml_file: str, output_dir: str | None = None) -> str | None:
+    def generate_unit_tests(self, yaml_file: str, output_dir: str | None = None, overwrite: bool = False) -> str | None:
         """
         根据 YAML 文件生成单元测试用例
         :param yaml_file: YAML 文件路径
         :param output_dir: 输出目录
+        :param overwrite: 是否覆盖已存在的文件
         :return: 生成的文件路径
         """
         test_data = self._load_yaml(yaml_file)
@@ -31,8 +32,11 @@ class UnitCaseGenerator:
         file_path = self._get_output_path(yaml_file, unittest_data["name"], output_dir)
 
         if os.path.exists(file_path):
-            log.info(f"测试用例文件已存在，跳过生成: {file_path}")
-            return None
+            if overwrite:
+                log.info(f"覆盖已存在的测试用例文件: {file_path}")
+            else:
+                log.info(f"测试用例文件已存在，跳过生成: {file_path}")
+                return None
 
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         self._generate_file(file_path, yaml_file, unittest_data)
@@ -276,13 +280,13 @@ class UnitCaseGenerator:
         message = assertion.get("message")
 
         if assert_type == "equals":
-            if field:
+            if field and field != "result":
                 f.write(f"        assert result{self._parse_field(field)} == {repr(expected)}\n")
             else:
                 f.write(f"        assert result == {repr(expected)}\n")
 
         elif assert_type == "not_equals":
-            if field:
+            if field and field != "result":
                 f.write(f"        assert result{self._parse_field(field)} != {repr(expected)}\n")
             else:
                 f.write(f"        assert result != {repr(expected)}\n")
