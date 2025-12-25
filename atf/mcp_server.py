@@ -240,6 +240,8 @@ class GenerateResponse(BaseModel):
 
     status: Literal["ok", "error"]
     written_files: list[str]
+    error_message: str | None = None
+    error_details: dict | None = None  # 更详细的错误信息，用于大模型理解
 
 
 class HealthResponse(BaseModel):
@@ -745,9 +747,45 @@ def write_testcase(
             raise ValueError("pytest 文件未生成，请检查测试用例数据格式")
 
         return GenerateResponse(status="ok", written_files=[yaml_relative_path, py_relative_path])
+    except ValidationError as exc:
+        # Pydantic 验证错误，返回详细字段级别信息
+        log.error(f"MCP 写入测试用例参数验证失败: {exc}")
+        errors = []
+        for err in exc.errors():
+            loc = ".".join(str(l) for l in err["loc"]) if err["loc"] else "unknown"
+            errors.append(f"  - {loc}: {err['msg']} (输入类型: {err.get('type', 'unknown')})")
+        error_details = {
+            "error_type": "validation_error",
+            "message": "参数格式错误，请检查以下字段：",
+            "details": errors,
+            "hints": [
+                "assert.type 应该是: equals, not_equals, contains",
+                "assert.field 应该为具体的响应字段名，如 status, result 等",
+                "step.method 应该是: GET, POST, PUT, DELETE, PATCH 等 HTTP 方法"
+            ]
+        }
+        return GenerateResponse(
+            status="error",
+            written_files=[],
+            error_message=f"参数验证失败: {exc}",
+            error_details=error_details
+        )
+    except ValueError as exc:
+        log.error(f"MCP 写入测试用例业务验证失败: {exc}")
+        return GenerateResponse(
+            status="error",
+            written_files=[],
+            error_message=str(exc),
+            error_details={"error_type": "value_error", "message": str(exc)}
+        )
     except Exception as exc:
         log.error(f"MCP 写入测试用例失败: {exc}")
-        return GenerateResponse(status="error", written_files=[])
+        return GenerateResponse(
+            status="error",
+            written_files=[],
+            error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
+            error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__}
+        )
 
 
 # ==================== 单元测试 MCP 工具 ====================
@@ -792,9 +830,45 @@ def write_unittest(
             raise ValueError("pytest 文件未生成，请检查单元测试数据格式")
 
         return GenerateResponse(status="ok", written_files=[yaml_relative_path, py_relative_path])
+    except ValidationError as exc:
+        # Pydantic 验证错误，返回详细字段级别信息
+        log.error(f"MCP 写入单元测试参数验证失败: {exc}")
+        errors = []
+        for err in exc.errors():
+            loc = ".".join(str(l) for l in err["loc"]) if err["loc"] else "unknown"
+            errors.append(f"  - {loc}: {err['msg']} (输入类型: {err.get('type', 'unknown')})")
+        error_details = {
+            "error_type": "validation_error",
+            "message": "参数格式错误，请检查以下字段：",
+            "details": errors,
+            "hints": [
+                "assert.type 应该是: equals, not_equals, contains, raises, called_once, called_with, not_called, is_none, is_not_none",
+                "assert.field 应该为 result 或者不传",
+                "fixtures 格式暂不支持 function 类型，当前仅支持 patch 类型"
+            ]
+        }
+        return GenerateResponse(
+            status="error",
+            written_files=[],
+            error_message=f"参数验证失败: {exc}",
+            error_details=error_details
+        )
+    except ValueError as exc:
+        log.error(f"MCP 写入单元测试业务验证失败: {exc}")
+        return GenerateResponse(
+            status="error",
+            written_files=[],
+            error_message=str(exc),
+            error_details={"error_type": "value_error", "message": str(exc)}
+        )
     except Exception as exc:
         log.error(f"MCP 写入单元测试失败: {exc}")
-        return GenerateResponse(status="error", written_files=[])
+        return GenerateResponse(
+            status="error",
+            written_files=[],
+            error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
+            error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__}
+        )
 
 
 # ==================== 测试执行 MCP 工具 ====================
