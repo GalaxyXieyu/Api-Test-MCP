@@ -38,50 +38,143 @@ from atf.mcp.utils import (
 _test_execution_history: list[dict] = []
 _history_lock = threading.Lock()
 
+# api-auto-test 包的安装目录（用于获取依赖列表）
+_ATF_ROOT = Path(__file__).parent.parent.parent.parent
+
+
+def _check_python_has_dependencies(python_path: str, required_modules: list[str]) -> tuple[bool, list[str]]:
+    """检查 Python 环境是否包含必要的依赖模块
+
+    Args:
+        python_path: Python 解释器路径
+        required_modules: 需要检查的模块列表
+
+    Returns:
+        (是否全部存在, 缺失的模块列表)
+    """
+    missing = []
+    for module in required_modules:
+        result = subprocess.run(
+            [python_path, "-c", f"import {module}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            missing.append(module)
+    return len(missing) == 0, missing
+
+
+def _install_missing_dependencies(python_path: str, missing_modules: list[str]) -> bool:
+    """为指定的 Python 环境安装缺失的依赖
+
+    Args:
+        python_path: Python 解释器路径
+        missing_modules: 缺失的模块列表
+
+    Returns:
+        bool: 安装是否成功
+    """
+    if not missing_modules:
+        return True
+
+    log.info(f"正在为 {python_path} 安装缺失依赖: {missing_modules}")
+
+    # 核心依赖列表 (模块名 -> 包名)
+    core_deps = {
+        "loguru": "loguru",
+        "yaml": "pyyaml",  # pyyaml 包导入名为 yaml
+        "requests": "requests",
+        "pytest": "pytest",
+        "allure-pytest": "allure-pytest",
+        "pydantic": "pydantic>=2.0",
+        "python-multipart": "python-multipart",
+        "python-dotenv": "python-dotenv",
+    }
+
+    # 映射模块名到包名
+    packages = []
+    for module in missing_modules:
+        if module in core_deps:
+            packages.append(core_deps[module])
+
+    if not packages:
+        return True
+
+    try:
+        result = subprocess.run(
+            [python_path, "-m", "pip", "install", "--upgrade"] + packages,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode == 0:
+            log.info(f"依赖安装成功: {packages}")
+            return True
+        else:
+            log.warning(f"依赖安装失败: {result.stderr}")
+            return False
+    except Exception as exc:
+        log.warning(f"安装依赖时出错: {exc}")
+        return False
+
 
 def get_python_path(repo_root: Path) -> str:
     """
     获取项目可用的 Python 解释器路径。
 
     优先级顺序:
-    1. uv run (当项目包含 pyproject.toml 且 uv 可用时)
-    2. .venv/bin/python (venv 虚拟环境)
-    3. .conda/bin/python (conda 虚拟环境)
-    4. sys.executable (系统 Python 解释器作为回退)
+    1. 检测项目 venv 依赖，缺失则自动安装
+    2. 使用项目自身的 venv
+    3. uv run (当项目包含 pyproject.toml 且 uv 可用时)
+    4. 系统 Python 解释器作为回退
 
     Args:
         repo_root: 项目根目录路径
 
     Returns:
-        str: Python 解释器路径或 'uv' 命令字串
+        str: Python 解释器路径
     """
-    # 优先使用 uv run (需要 pyproject.toml 且 uv 可用)
+    # 需要的核心依赖模块 (注意: pyyaml 包导入名为 yaml)
+    required_modules = ["loguru", "yaml", "requests", "pytest"]
+
+    # 查找项目 venv
+    venv_paths = [
+        repo_root / ".venv" / "bin" / "python",
+        repo_root / "venv" / "bin" / "python",
+    ]
+    conda_paths = [
+        repo_root / ".conda" / "bin" / "python",
+        repo_root / "conda" / "bin" / "python",
+    ]
+    project_pythons = [p for p in venv_paths + conda_paths if p.exists() and os.access(p, os.X_OK)]
+
+    # 优先尝试项目自身的 venv
+    for venv_python in project_pythons:
+        has_deps, missing = _check_python_has_dependencies(str(venv_python), required_modules)
+        if has_deps:
+            log.info(f"使用项目 venv: {venv_python}")
+            return str(venv_python)
+        else:
+            log.warning(f"项目 venv 缺少依赖: {missing}，尝试自动安装...")
+            # 自动安装缺失的依赖
+            if _install_missing_dependencies(str(venv_python), missing):
+                # 再次验证
+                has_deps, _ = _check_python_has_dependencies(str(venv_python), required_modules)
+                if has_deps:
+                    log.info(f"依赖安装成功，使用项目 venv: {venv_python}")
+                    return str(venv_python)
+
+            log.warning(f"依赖安装失败或超时，继续使用项目 venv（可能报错）: {venv_python}")
+            return str(venv_python)
+
+    # 优先使用 uv run (需要 pyproject.toml 且 uv 可用时)
     if (repo_root / "pyproject.toml").exists():
         uv_path = shutil.which("uv")
         if uv_path:
             log.info(f"使用 uv 运行测试")
             return "uv"
         log.warning("pyproject.toml 存在但 uv 未安装，回退到其他 Python 解释器")
-
-    # 查找 venv 路径（检查 .venv 和 venv 两种常见命名）
-    venv_paths = [
-        repo_root / ".venv" / "bin" / "python",
-        repo_root / "venv" / "bin" / "python",
-    ]
-    for venv_python in venv_paths:
-        if venv_python.exists() and os.access(venv_python, os.X_OK):
-            log.info(f"使用 venv Python: {venv_python}")
-            return str(venv_python)
-
-    # Conda 环境检测（检查 .conda 和 conda 两种常见命名）
-    conda_paths = [
-        repo_root / ".conda" / "bin" / "python",
-        repo_root / "conda" / "bin" / "python",
-    ]
-    for conda_python in conda_paths:
-        if conda_python.exists() and os.access(conda_python, os.X_OK):
-            log.info(f"使用 conda Python: {conda_python}")
-            return str(conda_python)
 
     # 回退到系统 Python
     log.warning(f"未找到项目 Python 解释器，回退到系统 Python: {sys.executable}")
