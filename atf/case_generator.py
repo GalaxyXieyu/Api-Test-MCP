@@ -242,7 +242,13 @@ class CaseGenerator:
 		
 		f.write(f"    @staticmethod\n")
 		f.write(f"    def load_test_case_data():\n")
-		f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', '..', '{relative_yaml_path}')\n")
+		# 计算相对路径部分
+		yaml_dir = os.path.dirname(relative_yaml_path)
+		yaml_basename = os.path.basename(relative_yaml_path)
+		if yaml_dir:
+			f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', '..', 'cases', '{yaml_dir}', '{yaml_basename}')\n")
+		else:
+			f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', '..', 'cases', '{yaml_basename}')\n")
 		f.write(f"        with open(yaml_path, 'r', encoding='utf-8') as file:\n")
 		f.write(f"            test_case_data = yaml.safe_load(file)['testcase']\n")
 		f.write(f"        return test_case_data\n\n")
@@ -401,10 +407,20 @@ class CaseGenerator:
 		teardowns = test_data.get('teardowns')
 		validate_teardowns = self.validate_teardowns(teardowns)
 
-		# 生成测试用例文件的相对路径。yaml文件路径有多个层级时，获取项目名称，以及base_dir后、yaml文件名前的路径
+		# 计算 relative_path（YAML 相对于 base_dir 的路径）
 		relative_path = os.path.relpath(yaml_file, base_dir)
 		path_components = relative_path.split(os.sep)
 		project_name = path_components[0] if path_components[0] else (path_components[1] if len(path_components) > 1 else "")
+
+		# 分离目录和文件名
+		if len(path_components) > 1:
+			# YAML 在子目录中，如 backend/settings_api.yaml
+			relative_dir = os.path.join(*path_components[:-1])  # backend/
+			yaml_filename = path_components[-1]  # settings_api.yaml
+		else:
+			# YAML 在 base_dir 根目录
+			relative_dir = ""
+			yaml_filename = path_components[0] if path_components else os.path.basename(yaml_file)
 		# 移除最后一个组件（文件名）
 		if path_components:
 			path_components.pop()  # 移除最后一个元素
@@ -503,7 +519,10 @@ class CaseGenerator:
 			
 			f.write(f"    @staticmethod\n")
 			f.write(f"    def load_test_case_data():\n")
-			f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', '..', '{relative_path}')\n")
+			if relative_dir:
+				f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', '..', 'cases', '{relative_dir}', '{yaml_filename}')\n")
+			else:
+				f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', '..', 'cases', '{yaml_filename}')\n")
 			f.write(f"        with open(yaml_path, 'r', encoding='utf-8') as file:\n")
 			f.write(f"            test_case_data = yaml.safe_load(file)['testcase']\n")
 			f.write(f"        return test_case_data\n\n")
