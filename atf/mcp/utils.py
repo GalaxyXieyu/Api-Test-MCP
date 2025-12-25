@@ -12,6 +12,7 @@ import yaml as _yaml
 from pydantic import ValidationError
 
 from atf.core.log_manager import log
+from atf.case_generator import sanitize_name
 from atf.mcp.models import (
     TestcaseModel,
     UnitTestModel,
@@ -129,7 +130,9 @@ def expected_py_path(
         except ValueError:
             directory_path = Path()
 
-    py_filename = f"test_{testcase_name}.py"
+    # 使用 sanitize_name 确保文件名与 case_generator 生成的一致
+    safe_name = sanitize_name(testcase_name)
+    py_filename = f"test_{safe_name}.py"
     py_full_path = (scripts_root / directory_path / py_filename).resolve(strict=False)
     py_relative_path = py_full_path.relative_to(repo_root).as_posix()
     return py_full_path, py_relative_path
