@@ -3,6 +3,22 @@ name = "api-auto-test"
 version = "0.1.0"
 description = "API Auto Test Framework with MCP Server"
 requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "GalaxyXieyu", email = "galaxyxieyu@github.com"}]
+keywords = ["api", "testing", "mcp", "automation", "pytest"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+readme = "README.md"
+homepage = "https://github.com/GalaxyXieyu/Api-Test-MCP"
+repository = "https://github.com/GalaxyXieyu/Api-Test-MCP"
+documentation = "https://github.com/GalaxyXieyu/Api-Test-MCP#readme"
 dependencies = [
     "mcp>=1.0.0",
     "pyyaml>=6.0",
