@@ -246,13 +246,13 @@ class CaseGenerator:
 		
 		f.write(f"    @staticmethod\n")
 		f.write(f"    def load_test_case_data():\n")
-		# 计算相对路径部分
+		# 计算相对路径部分：tests/scripts/ -> tests/cases/
 		yaml_dir = os.path.dirname(relative_yaml_path)
 		yaml_basename = os.path.basename(relative_yaml_path)
 		if yaml_dir:
-			f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', '..', 'cases', '{yaml_dir}', '{yaml_basename}')\n")
+			f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', 'cases', '{yaml_dir}', '{yaml_basename}')\n")
 		else:
-			f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', '..', 'cases', '{yaml_basename}')\n")
+			f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', 'cases', '{yaml_basename}')\n")
 		f.write(f"        with open(yaml_path, 'r', encoding='utf-8') as file:\n")
 		f.write(f"            test_case_data = yaml.safe_load(file)['testcase']\n")
 		f.write(f"        return test_case_data\n\n")
@@ -526,9 +526,9 @@ class CaseGenerator:
 			f.write(f"    @staticmethod\n")
 			f.write(f"    def load_test_case_data():\n")
 			if relative_dir:
-				f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', '..', 'cases', '{relative_dir}', '{yaml_filename}')\n")
+				f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', 'cases', '{relative_dir}', '{yaml_filename}')\n")
 			else:
-				f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', '..', 'cases', '{yaml_filename}')\n")
+				f.write(f"        yaml_path = os.path.join(os.path.dirname(__file__), '..', 'cases', '{yaml_filename}')\n")
 			f.write(f"        with open(yaml_path, 'r', encoding='utf-8') as file:\n")
 			f.write(f"            test_case_data = yaml.safe_load(file)['testcase']\n")
 			f.write(f"        return test_case_data\n\n")
