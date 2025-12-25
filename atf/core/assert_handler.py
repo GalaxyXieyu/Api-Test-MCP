@@ -43,13 +43,24 @@ class AssertHandler:
             query = assertion.get('query')
 
             # 检查必填字段
-            if not field_path and assert_type not in ['mysql_query', 'mysql_query_exists', 'mysql_query_true', 'contains', 'contain', 'status_code', 'status']:
+            if not field_path and assert_type not in [
+                'mysql_query',
+                'mysql_query_exists',
+                'mysql_query_true',
+                'contains',
+                'contain',
+                'status_code',
+                'status',
+            ]:
                 log.error(f"断言的 'field' 不能为空: {assertion}")
                 raise ValueError(f"断言的 'field' 不能为空: {assertion}")
-            if assert_type in ['equal', 'not equal'] and expected is None:
+            if assert_type in ['equal', 'equals', 'not equal', 'not_equal', 'not_equals'] and expected is None:
                 log.error(f"断言的 'expected' 不能为空: {assertion}")
                 raise ValueError(f"断言的 'expected' 不能为空: {assertion}")
-            if assert_type in ['in', 'not in'] and container is None:
+            if assert_type == 'length' and expected is None:
+                log.error(f"断言的 'expected' 不能为空: {assertion}")
+                raise ValueError(f"断言的 'expected' 不能为空: {assertion}")
+            if assert_type in ['in', 'not in', 'not_in'] and container is None:
                 log.error(f"断言的 'container' 不能为空: {assertion}")
                 raise ValueError(f"断言的 'container' 不能为空: {assertion}")
 
@@ -65,10 +76,19 @@ class AssertHandler:
                 assert field_value == expected, f"Expected {expected}, but got {field_value}"
             elif assert_type in ('not equal', 'not_equal', 'not_equals'):
                 assert field_value != expected, f"Expected not {expected}, but got {field_value}"
+            elif assert_type in ('exists', 'exist'):
+                assert field_value is not None, f"Expected field {field_path} to exist, but got None"
             elif assert_type in ('is_none', 'is None', 'None'):
                 assert field_value is None, f"Expected None, but got {field_value}"
             elif assert_type in ('is_not_none', 'is not None', 'not None'):
                 assert field_value is not None, f"Expected not None, but got {field_value}"
+            elif assert_type == 'length':
+                assert field_value is not None, f"Expected field {field_path} not to be None for length assertion"
+                try:
+                    actual_len = len(field_value)
+                except TypeError:
+                    raise ValueError(f"length 断言不支持该类型: field={field_path}, value={field_value}")
+                assert actual_len == expected, f"Expected length {expected}, but got {actual_len}"
             elif assert_type == 'in':
                 assert field_value in container, f"Expected {field_value} to be in {container}"
             elif assert_type in ('not in', 'not_in'):
