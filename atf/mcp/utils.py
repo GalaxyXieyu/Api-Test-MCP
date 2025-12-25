@@ -85,20 +85,28 @@ def resolve_tests_root(
     repo_root, _, cases_root, _ = get_roots(workspace)
     cases_root_resolved = cases_root.resolve(strict=False)
     if not root_path:
-        # 默认目录不存在则自动创建
-        if not cases_root_resolved.exists():
+        # 直接创建，默认目录不存在则自动创建
+        try:
             cases_root_resolved.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise ValueError(f"无法创建目录 {cases_root_resolved}: {exc}") from exc
         return cases_root_resolved, repo_root
+
     raw_path = Path(root_path)
     if raw_path.is_absolute():
         normalized = raw_path.resolve(strict=False)
     else:
         normalized = (repo_root / raw_path).resolve(strict=False)
+
     if not normalized.is_relative_to(repo_root):
         raise ValueError(f"root_path 必须在项目目录 {repo_root} 下")
-    # 目录不存在则自动创建
-    if not normalized.exists():
+
+    # 直接创建，exist_ok=True 避免并发竞态
+    try:
         normalized.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ValueError(f"无法创建目录 {normalized}: {exc}") from exc
+
     if not normalized.is_dir():
         raise ValueError("root_path 必须是目录")
     return normalized, repo_root

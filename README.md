@@ -8,7 +8,7 @@
 
 **YAML 声明式 API 测试框架，专为 AI 编程助手优化**
 
-[快速开始](#快速开始) | [MCP 集成](#mcp-server-集成) | [YAML 规范](#yaml-用例规范)
+[快速开始](#快速开始) | [MCP 集成](#mcp-server-集成) | [YAML 规范](#yaml-用例规范) | [单元测试](#单元测试)
 
 </div>
 
@@ -52,16 +52,72 @@ AI 生成的测试跑不通，报错信息贴给它，它改了一版还是不�
 |------|------|
 | **YAML 声明式用例** | 测试逻辑与执行代码分离，AI 只需生成结构化数据 |
 | **MCP Server** | 与 Claude/Cursor 等 AI 编辑器无缝集成 |
+| **接口 Workflow 编排** | 单文件支持多步骤接口调用，步骤间数据传递与断言 |
 | **变量解析引擎** | 支持步骤间数据传递、全局变量、动态函数调用 |
 | **自动认证管理** | Token 获取和刷新由框架处理 |
-| **多格式报告** | Allure、pytest-html |
+| **数据工厂** | 无需 Java 依赖，内置 Mock 数据生成 |
+| **多格式测试报告** | Allure（离线/在线）、pytest-html（独立 HTML，美化样式） |
 | **多渠道通知** | 钉钉、飞书、企业微信 |
+| **单元测试** | 支持 Python 代码单元测试，Mock 依赖自动注入 |
 
 ---
 
 ## 快速开始
 
 ### 安装
+
+```bash
+# 1. 安装 uv（如果没有）
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 2. 安装 MCP 服务器
+uv tool install git+https://github.com/GalaxyXieyu/Api-Test-MCP.git
+```
+
+### 配置编辑器
+
+将以下配置添加到编辑器的 MCP 设置：
+
+```json
+{
+  "mcpServers": {
+    "api-auto-test": {
+      "command": "api-auto-test-mcp"
+    }
+  }
+}
+```
+
+| 编辑器 | 配置位置 |
+|--------|---------|
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Cursor | 设置 -> MCP Servers |
+| VSCode + Continue | `.vscode/mcp.json` |
+
+### 可用工具
+
+| 工具 | 说明 |
+|------|------|
+| `list_testcases` | 列出测试用例 |
+| `get_testcase` | 读取用例内容 |
+| `write_testcase` | 创建/更新用例并生成 pytest 脚本 |
+| `write_unittest` | 创建单元测试 |
+| `delete_testcase` | 删除用例 |
+| `run_tests` | 执行测试 |
+| `get_test_results` | 获取测试执行历史 |
+
+### 使用示例
+
+对 AI 说：
+
+```
+帮我创建一个测试 /api/users 接口的用例，验证返回的用户列表长度大于 0
+```
+
+AI 会调用 `write_testcase` 生成 YAML 和对应的 pytest 脚本。
+
+---
+### 源码测试开发
 
 ```bash
 # 推荐使用 uv
@@ -106,9 +162,18 @@ pytest tests/scripts/ -v
 # 生成 Allure 报告
 pytest tests/scripts/ --alluredir=tests/allure-results
 allure serve tests/allure-results
+
+# 生成 pytest-html 报告
+pytest tests/scripts/ --html=report.html
 ```
 
 ---
+
+## MCP Server 集成
+
+通过 MCP，AI 编辑器可以直接调用框架工具生成和执行测试。
+
+
 
 ## 项目结构
 
@@ -124,62 +189,6 @@ api-auto-test/
 ├── config.yaml             # 项目配置（环境、数据库、通知）
 └── pyproject.toml
 ```
-
----
-
-## MCP Server 集成
-
-通过 MCP，AI 编辑器可以直接调用框架工具生成和执行测试。
-
-### 安装
-
-```bash
-# 1. 安装 uv（如果没有）
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# 2. 安装 MCP 服务器
-uv tool install git+https://github.com/GalaxyXieyu/Api-Test-MCP.git
-```
-
-### 配置编辑器
-
-将以下配置添加到编辑器的 MCP 设置：
-
-```json
-{
-  "mcpServers": {
-    "api-auto-test": {
-      "command": "api-auto-test-mcp"
-    }
-  }
-}
-```
-
-| 编辑器 | 配置位置 |
-|--------|---------|
-| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-| Cursor | 设置 -> MCP Servers |
-| VSCode + Continue | `.vscode/mcp.json` |
-
-### 可用工具
-
-| 工具 | 说明 |
-|------|------|
-| `list_testcases` | 列出测试用例 |
-| `get_testcase` | 读取用例内容 |
-| `write_testcase` | 创建/更新用例并生成 pytest 脚本 |
-| `delete_testcase` | 删除用例 |
-| `run_tests` | 执行测试 |
-
-### 使用示例
-
-对 AI 说：
-
-```
-帮我创建一个测试 /api/users 接口的用例，验证返回的用户列表长度大于 0
-```
-
-AI 会调用 `write_testcase` 生成 YAML 和对应的 pytest 脚本。
 
 ---
 
@@ -249,6 +258,56 @@ testcase:
       path: /api/users/{{ create_user.data.id }}
       method: DELETE
 ```
+
+---
+
+## 单元测试
+
+支持为 Python 代码编写单元测试，通过 MCP 工具自动生成测试用例。
+
+### 单元测试 YAML 格式
+
+```yaml
+unittest:
+  name: UserService 测试
+  target:
+    module: app.services.user_service
+    class: UserService
+    function: get_user
+  fixtures:
+    setup:
+      - type: patch
+        target: app.services.user_service.UserRepository
+        return_value:
+          id: 1
+          name: "test_user"
+  cases:
+    - id: test_get_user_success
+      description: 测试获取用户成功
+      inputs:
+        args: [1]
+        kwargs: {}
+      assert:
+        - type: equals
+          field: result.id
+          expected: 1
+        - type: equals
+          field: result.name
+          expected: "test_user"
+```
+
+### 断言类型
+
+| 类型 | 说明 |
+|------|------|
+| `equals` | 精确匹配 |
+| `not_equals` | 不匹配 |
+| `contains` | 包含 |
+| `raises` | 期望抛出异常 |
+| `is_none` | 结果为 None |
+| `is_not_none` | 结果不为 None |
+| `called_once` | mock 被调用一次 |
+| `called_with` | mock 被特定参数调用 |
 
 ---
 
