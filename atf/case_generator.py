@@ -11,15 +11,15 @@ def sanitize_name(name: str) -> str:
 	"""
 	将名称转换为安全的 Python 标识符
 	- 空格/连字符 -> 下划线
-	- 中文 -> 移除（或可选转拼音）
+	- 中文 -> 保留中文，使用下划线连接
 	- 特殊字符 -> 移除
 	"""
 	# 替换空格和连字符为下划线
 	result = re.sub(r'[\s\-]+', '_', name)
-	# 移除非 ASCII 字符（中文等）
-	result = re.sub(r'[^\x00-\x7F]+', '', result)
-	# 移除非法字符，只保留字母、数字、下划线
-	result = re.sub(r'[^a-zA-Z0-9_]', '', result)
+	# 保留中文，只移除其他非 ASCII 字符
+	result = re.sub(r'[^\w\u4e00-\u9fff]+', '', result)
+	# 移除非法字符（保留字母、数字、下划线、中文）
+	result = re.sub(r'[^\w]+', '', result)
 	# 移除开头的数字
 	result = re.sub(r'^[0-9]+', '', result)
 	# 移除连续下划线
@@ -190,7 +190,10 @@ class CaseGenerator:
 
 		# 计算 project_name（从相对路径中提取）
 		path_components = relative_yaml_path.split(os.sep)
-		project_name = path_components[0] if path_components[0] else (path_components[1] if len(path_components) > 1 else "")
+		if len(path_components) > 1:
+			project_name = path_components[0]
+		else:
+			project_name = "default"
 		
 		allure_epic = test_data.get("allure", {}).get("epic", project_name)
 		allure_feature = test_data.get("allure", {}).get("feature")
@@ -411,17 +414,18 @@ class CaseGenerator:
 		# 计算 relative_path（YAML 相对于 base_dir 的路径）
 		relative_path = os.path.relpath(yaml_file, base_dir)
 		path_components = relative_path.split(os.sep)
-		project_name = path_components[0] if path_components[0] else (path_components[1] if len(path_components) > 1 else "")
 
 		# 分离目录和文件名
 		if len(path_components) > 1:
 			# YAML 在子目录中，如 backend/settings_api.yaml
 			relative_dir = os.path.join(*path_components[:-1])  # backend/
 			yaml_filename = path_components[-1]  # settings_api.yaml
+			project_name = path_components[0]  # 使用第一级目录名作为 project_name
 		else:
 			# YAML 在 base_dir 根目录
 			relative_dir = ""
 			yaml_filename = path_components[0] if path_components else os.path.basename(yaml_file)
+			project_name = "default"  # 使用默认 project_name
 		# 移除最后一个组件（文件名）
 		if path_components:
 			path_components.pop()  # 移除最后一个元素
