@@ -10,6 +10,7 @@ dependencies = [
     "pytest>=7.0",
     "allure-pytest>=2.13",
     "requests>=2.31",
+    "urllib3<2",  # urllib3 v2 requires OpenSSL 1.1.1+, incompatible with macOS LibreSSL
     "loguru>=0.4.1",
     "mysql-connector-python>=8.0.33",
     "dingtalkchatbot>=1.5.7",

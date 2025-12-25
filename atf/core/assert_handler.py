@@ -43,7 +43,7 @@ class AssertHandler:
             query = assertion.get('query')
 
             # 检查必填字段
-            if not field_path and assert_type not in ['mysql_query', 'mysql_query_exists', 'mysql_query_true', 'contains', 'contain']:
+            if not field_path and assert_type not in ['mysql_query', 'mysql_query_exists', 'mysql_query_true', 'contains', 'contain', 'status_code', 'status']:
                 log.error(f"断言的 'field' 不能为空: {assertion}")
                 raise ValueError(f"断言的 'field' 不能为空: {assertion}")
             if assert_type in ['equal', 'not equal'] and expected is None:
@@ -57,7 +57,11 @@ class AssertHandler:
             field_value = self.get_field_value(response, field_path) if field_path else None
 
             # 处理各种断言类型
-            if assert_type in ('equal', 'equals'):
+            if assert_type in ('status_code', 'status'):
+                # status_code 检查 HTTP 状态码（response 可能是 dict 或 Response 对象）
+                actual_status = response.get('_status_code') if isinstance(response, dict) else response.status_code
+                assert actual_status == expected, f"Expected status code {expected}, but got {actual_status}"
+            elif assert_type in ('equal', 'equals'):
                 assert field_value == expected, f"Expected {expected}, but got {field_value}"
             elif assert_type in ('not equal', 'not_equal', 'not_equals'):
                 assert field_value != expected, f"Expected not {expected}, but got {field_value}"

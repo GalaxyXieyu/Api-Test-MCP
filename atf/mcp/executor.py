@@ -42,6 +42,65 @@ _history_lock = threading.Lock()
 _ATF_ROOT = Path(__file__).parent.parent.parent.parent
 
 
+def _check_allure_available() -> bool:
+    """检查 allure 命令是否可用"""
+    return shutil.which("allure") is not None
+
+
+def _install_allure() -> bool:
+    """安装 allure 命令行工具"""
+    log.info("正在安装 Allure 命令行工具...")
+
+    # 尝试通过 npm 安装
+    npm_path = shutil.which("npm")
+    if npm_path:
+        result = subprocess.run(
+            [npm_path, "install", "-g", "allure-commandline"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode == 0:
+            log.info("✅ Allure 安装成功（npm）")
+            return True
+        log.warning(f"Allure npm 安装失败: {result.stderr}")
+
+    # 尝试通过 pip 安装
+    python_path = sys.executable
+    result = subprocess.run(
+        [python_path, "-m", "pip", "install", "allure-pytest"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if result.returncode == 0:
+        log.info("✅ Allure 安装成功（pip）")
+        return True
+    log.warning(f"Allure pip 安装失败: {result.stderr}")
+
+    return False
+
+
+def _ensure_allure_available() -> bool:
+    """确保 allure 可用，不存在则自动安装
+
+    Returns:
+        bool: allure 是否可用
+    """
+    # 先检查 Java 是否可用（Allure 需要 Java）
+    try:
+        subprocess.run(["java", "-version"], capture_output=True, text=True, timeout=10)
+    except FileNotFoundError:
+        log.warning("⚠️ Java 未安装，Allure 报告需要 Java 运行环境")
+        log.info("💡 安装方式: brew install openjdk@11 或 brew install openjdk")
+        return False
+
+    if _check_allure_available():
+        return True
+    log.warning("Allure 命令未找到，尝试自动安装...")
+    return _install_allure()
+
+
 def _check_python_has_dependencies(python_path: str, required_modules: list[str]) -> tuple[bool, list[str]]:
     """检查 Python 环境是否包含必要的依赖模块
 
@@ -65,6 +124,17 @@ def _check_python_has_dependencies(python_path: str, required_modules: list[str]
     return len(missing) == 0, missing
 
 
+def _load_required_modules_from_requirements() -> list[str]:
+    """返回需要检测的模块列表（写死配置）
+
+    Returns:
+        list[str]: 需要检测的模块名列表
+    """
+    # 直接定义需要检测的模块（运行测试脚本需要的基础依赖）
+    # 注意：urllib3<2.0 因为 macOS 系统 Python 使用 LibreSSL，不兼容 v2 的 OpenSSL 要求
+    return ["loguru", "yaml", "requests", "urllib3", "pytest", "mysql", "Crypto"]
+
+
 def _install_missing_dependencies(python_path: str, missing_modules: list[str]) -> bool:
     """为指定的 Python 环境安装缺失的依赖
 
@@ -80,39 +150,56 @@ def _install_missing_dependencies(python_path: str, missing_modules: list[str]) 
 
     log.info(f"正在为 {python_path} 安装缺失依赖: {missing_modules}")
 
-    # 核心依赖列表 (模块名 -> 包名)
-    core_deps = {
+    # 包名到模块名的映射
+    module_to_package = {
+        "atf": "-e /Volumes/DATABASE/code/api-auto-test",
         "loguru": "loguru",
-        "yaml": "pyyaml",  # pyyaml 包导入名为 yaml
+        "yaml": "pyyaml",
         "requests": "requests",
+        "urllib3": "urllib3<2",  # urllib3 v2 需要 OpenSSL 1.1.1+，macOS 使用 LibreSSL 不兼容
         "pytest": "pytest",
-        "allure-pytest": "allure-pytest",
-        "pydantic": "pydantic>=2.0",
-        "python-multipart": "python-multipart",
-        "python-dotenv": "python-dotenv",
+        "allure_python_commons": "allure-python-commons",
+        "mysql": "mysql-connector-python",
+        "crypto": "pycryptodome",
+        "pytest_html": "pytest-html",
+        "dingtalkchatbot": "DingtalkChatbot",
     }
 
     # 映射模块名到包名
     packages = []
     for module in missing_modules:
-        if module in core_deps:
-            packages.append(core_deps[module])
+        if module in module_to_package:
+            packages.append(module_to_package[module])
+        else:
+            packages.append(module)
 
     if not packages:
         return True
 
     try:
+        # 优先升级 pip 以支持现代安装方式
+        log.info("升级 pip 以支持现代安装...")
         result = subprocess.run(
-            [python_path, "-m", "pip", "install", "--upgrade"] + packages,
+            [python_path, "-m", "pip", "install", "--upgrade", "pip"],
             capture_output=True,
             text=True,
             timeout=120,
         )
+        if result.returncode != 0:
+            log.warning(f"pip 升级失败，继续尝试安装: {result.stderr}")
+
+        # 安装依赖
+        result = subprocess.run(
+            [python_path, "-m", "pip", "install"] + packages,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
         if result.returncode == 0:
-            log.info(f"依赖安装成功: {packages}")
+            log.info(f"✅ 依赖安装成功: {packages}")
             return True
         else:
-            log.warning(f"依赖安装失败: {result.stderr}")
+            log.warning(f"❌ 依赖安装失败: {result.stderr}")
             return False
     except Exception as exc:
         log.warning(f"安装依赖时出错: {exc}")
@@ -124,7 +211,7 @@ def get_python_path(repo_root: Path) -> str:
     获取项目可用的 Python 解释器路径。
 
     优先级顺序:
-    1. 检测项目 venv 依赖，缺失则自动安装
+    1. 检测项目 venv 依赖，缺失则自动安装到项目 venv
     2. 使用项目自身的 venv
     3. uv run (当项目包含 pyproject.toml 且 uv 可用时)
     4. 系统 Python 解释器作为回退
@@ -135,8 +222,8 @@ def get_python_path(repo_root: Path) -> str:
     Returns:
         str: Python 解释器路径
     """
-    # 需要的核心依赖模块 (注意: pyyaml 包导入名为 yaml)
-    required_modules = ["loguru", "yaml", "requests", "pytest"]
+    # 从 api-auto-test/requirements.txt 读取需要检测的依赖
+    required_modules = _load_required_modules_from_requirements()
 
     # 查找项目 venv
     venv_paths = [
@@ -149,6 +236,9 @@ def get_python_path(repo_root: Path) -> str:
     ]
     project_pythons = [p for p in venv_paths + conda_paths if p.exists() and os.access(p, os.X_OK)]
 
+    # api-auto-test 的 venv（包含 atf 包）
+    api_auto_test_venv = _ATF_ROOT / ".venv" / "bin" / "python"
+
     # 优先尝试项目自身的 venv
     for venv_python in project_pythons:
         has_deps, missing = _check_python_has_dependencies(str(venv_python), required_modules)
@@ -156,17 +246,25 @@ def get_python_path(repo_root: Path) -> str:
             log.info(f"使用项目 venv: {venv_python}")
             return str(venv_python)
         else:
-            log.warning(f"项目 venv 缺少依赖: {missing}，尝试自动安装...")
-            # 自动安装缺失的依赖
+            log.warning(f"项目 venv 缺少依赖: {missing}，正在自动安装...")
+            # 自动安装缺失的依赖到项目 venv
             if _install_missing_dependencies(str(venv_python), missing):
                 # 再次验证
                 has_deps, _ = _check_python_has_dependencies(str(venv_python), required_modules)
                 if has_deps:
-                    log.info(f"依赖安装成功，使用项目 venv: {venv_python}")
+                    log.info(f"✅ 依赖安装成功，使用项目 venv: {venv_python}")
                     return str(venv_python)
 
-            log.warning(f"依赖安装失败或超时，继续使用项目 venv（可能报错）: {venv_python}")
+            # 如果安装失败，继续使用项目 venv（至少其他项目依赖可用）
+            log.warning(f"⚠️ 部分依赖安装失败，继续使用项目 venv: {venv_python}")
             return str(venv_python)
+
+    # 检查 api-auto-test 的 venv 是否可用（当项目没有 venv 时）
+    if api_auto_test_venv.exists() and os.access(api_auto_test_venv, os.X_OK):
+        has_deps, _ = _check_python_has_dependencies(str(api_auto_test_venv), required_modules)
+        if has_deps:
+            log.info(f"项目无 venv，使用 api-auto-test venv: {api_auto_test_venv}")
+            return str(api_auto_test_venv)
 
     # 优先使用 uv run (需要 pyproject.toml 且 uv 可用时)
     if (repo_root / "pyproject.toml").exists():
@@ -174,7 +272,7 @@ def get_python_path(repo_root: Path) -> str:
         if uv_path:
             log.info(f"使用 uv 运行测试")
             return "uv"
-        log.warning("pyproject.toml 存在但 uv 未安装，回退到其他 Python 解释器")
+        log.warning("pyproject.toml 存在但 uv 未安装")
 
     # 回退到系统 Python
     log.warning(f"未找到项目 Python 解释器，回退到系统 Python: {sys.executable}")
@@ -206,11 +304,21 @@ def run_pytest(pytest_path: str, repo_root: Path, python_path: str | None = None
         else:
             python_path = get_python_path(repo_root)
 
+        # 检查项目 venv 是否包含 atf 模块
+        env = os.environ.copy()
+        if python_path != "uv":
+            has_atf, _ = _check_python_has_dependencies(python_path, ["atf"])
+            if not has_atf:
+                # 添加 api-auto-test 到 PYTHONPATH，让测试脚本能导入 atf 模块
+                env["PYTHONPATH"] = f"{_ATF_ROOT}:{env.get('PYTHONPATH', '')}"
+                log.info(f"项目 venv 缺少 atf 模块，通过 PYTHONPATH 添加 api-auto-test")
+
         # 构建 pytest 命令
+        allure_dir = repo_root / "test_cases" / "allure-results"
         if python_path == "uv":
-            cmd = ["uv", "run", "pytest", pytest_path, "-v", "--tb=short", "-q"]
+            cmd = ["uv", "run", "pytest", pytest_path, "-v", "--tb=short", "-q", "--alluredir", str(allure_dir)]
         else:
-            cmd = [python_path, "-m", "pytest", pytest_path, "-v", "--tb=short", "-q"]
+            cmd = [python_path, "-m", "pytest", pytest_path, "-v", "--tb=short", "-q", "--alluredir", str(allure_dir)]
 
         log.info(f"执行测试命令: {' '.join(cmd)}")
 
@@ -220,6 +328,7 @@ def run_pytest(pytest_path: str, repo_root: Path, python_path: str | None = None
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=env,
         )
         try:
             stdout, stderr = process.communicate(timeout=PYTEST_TIMEOUT)
@@ -279,6 +388,20 @@ def run_pytest(pytest_path: str, repo_root: Path, python_path: str | None = None
                     message=stdout.strip()[-200:] if stdout else "执行完成"
                 ).model_dump()
             ]
+
+        # 自动生成 Allure 报告
+        if allure_dir.exists() and _ensure_allure_available():
+            report_dir = repo_root / "test_cases" / "allure-report"
+            try:
+                subprocess.run(
+                    ["allure", "generate", str(allure_dir), "-o", str(report_dir), "--clean"],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                log.info(f"✅ Allure 报告已生成: {report_dir}")
+            except Exception as exc:
+                log.warning(f"Allure 报告生成失败: {exc}")
 
     except Exception as exc:
         result_data["error_message"] = str(exc)

@@ -73,6 +73,7 @@ class RequestHandler:
 
         try:
             response_json = response.json()
+            response_json['_status_code'] = response.status_code  # 添加状态码到响应中
             log.info("返回参数：{}".format(response_json))
             return response_json
         except ValueError:
