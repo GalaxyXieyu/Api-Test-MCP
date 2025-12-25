@@ -265,8 +265,22 @@ class ReadTestcaseResponse(BaseModel):
     error_details: dict | None = None
 
 
+class GetTestcaseResponse(BaseModel):
+    """获取测试用例响应（整合读取 + 校验）"""
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["ok", "error"]
+    yaml_path: str
+    mode: Literal["summary", "full"]
+    testcase: dict[str, Any] | None  # 测试用例内容
+    is_valid: bool  # 是否通过校验
+    errors: list[str]  # 校验错误列表（空表示通过）
+    error_message: str | None = None
+    error_details: dict | None = None
+
+
 class ValidateTestcaseResponse(BaseModel):
-    """校验测试用例响应"""
+    """校验测试用例响应（已废弃，请使用 get_testcase）"""
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok", "error"]
@@ -346,6 +360,29 @@ class BatchRunResponse(BaseModel):
     results: list[TestResultModel]  # 每个测试用例的结果
 
 
+class RunTestsResponse(BaseModel):
+    """统一测试执行响应（支持单用例和批量）"""
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["ok", "error"]
+    mode: Literal["single", "batch"]  # 执行模式
+    # 单用例模式字段
+    test_name: str | None = None
+    yaml_path: str | None = None
+    py_path: str | None = None
+    result: TestResultModel | None = None
+    # 批量模式字段
+    total: int | None = None
+    passed: int | None = None
+    failed: int | None = None
+    skipped: int | None = None
+    duration: float | None = None
+    results: list[TestResultModel] | None = None
+    # 错误信息
+    error_message: str | None = None
+    error_details: dict | None = None
+
+
 class TestResultHistoryModel(BaseModel):
     """测试结果历史记录"""
     model_config = ConfigDict(extra="forbid")
@@ -387,14 +424,15 @@ __all__ = [
     "GenerateResponse",
     "HealthResponse",
     "ListTestcasesResponse",
+    "GetTestcaseResponse",
     "ReadTestcaseResponse",
     "ValidateTestcaseResponse",
-    "RegenerateResponse",
     "DeleteTestcaseResponse",
     "AssertionResultModel",
     "TestResultModel",
     "RunTestcaseResponse",
     "BatchRunResponse",
+    "RunTestsResponse",
     "TestResultHistoryModel",
     "GetTestResultsResponse",
 ]

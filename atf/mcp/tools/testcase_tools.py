@@ -12,9 +12,9 @@ from atf.case_generator import CaseGenerator
 from atf.core.log_manager import log
 from atf.mcp.models import (
     GenerateResponse,
+    GetTestcaseResponse,
     ListTestcasesResponse,
     ReadTestcaseResponse,
-    RegenerateResponse,
     DeleteTestcaseResponse,
     TestcaseModel,
     ValidateTestcaseResponse,
@@ -95,13 +95,20 @@ def register_testcase_tools(mcp: FastMCP) -> None:
             )
 
     @mcp.tool(
-        name="read_testcase",
-        title="读取测试用例内容",
-        description="读取指定 YAML 测试用例内容，返回摘要或完整结构。\n\n"
+        name="get_testcase",
+        title="获取测试用例",
+        description="获取指定 YAML 测试用例内容，同时返回校验结果（整合读取 + 校验）。\n\n"
+        "**功能特点**:\n"
+        "- 读取测试用例内容（摘要或完整）\n"
+        "- 自动校验用例结构是否规范\n"
+        "- 返回内容与校验状态，一次调用获取全部信息\n\n"
         "**参数说明**:\n"
         "- `yaml_path`: YAML 文件路径（相对于 workspace）\n"
         "- `mode`: `summary`(摘要，只返回 name/steps/teardowns) | `full`(完整，返回原始 YAML)\n"
         "- `workspace`: **必须**，指定项目根目录\n\n"
+        "**返回值说明**:\n"
+        "- `is_valid`: 是否通过校验\n"
+        "- `errors`: 校验错误列表（空数组表示通过）\n\n"
         "示例:\n"
         "```json\n"
         "{\n"
@@ -111,97 +118,86 @@ def register_testcase_tools(mcp: FastMCP) -> None:
         "}\n"
         "```",
     )
-    def read_testcase(
+    def get_testcase(
         yaml_path: str,
         mode: Literal["summary", "full"] = "summary",
         workspace: str | None = None,
-    ) -> ReadTestcaseResponse:
+    ) -> GetTestcaseResponse:
+        """获取测试用例内容并校验结构"""
+        validation_errors: list[str] = []
+        testcase_content: dict[str, Any] | None = None
+
         try:
             yaml_full_path, yaml_relative_path, _ = resolve_yaml_path(yaml_path, workspace)
             raw_data = load_yaml_file(yaml_full_path)
-            if mode == "full":
-                return ReadTestcaseResponse(
-                    status="ok",
-                    yaml_path=yaml_relative_path,
-                    mode=mode,
-                    testcase=raw_data,
-                )
-            testcase_model = parse_testcase_input(raw_data)
-            summary = build_testcase_summary(testcase_model)
-            return ReadTestcaseResponse(
-                status="ok",
+
+            # 尝试解析和校验
+            try:
+                testcase_model = parse_testcase_input(raw_data)
+                if mode == "summary":
+                    testcase_content = build_testcase_summary(testcase_model)
+                else:
+                    testcase_content = raw_data
+                validation_errors = []
+                is_valid = True
+            except ValidationError as exc:
+                validation_errors = format_validation_error(exc)
+                is_valid = False
+                if mode == "summary":
+                    testcase_content = None
+                else:
+                    testcase_content = raw_data
+
+            return GetTestcaseResponse(
+                status="ok" if is_valid else "error",
                 yaml_path=yaml_relative_path,
                 mode=mode,
-                testcase=summary,
+                testcase=testcase_content,
+                is_valid=is_valid,
+                errors=validation_errors,
             )
+
         except ValidationError as exc:
-            log.error(f"MCP 读取测试用例参数验证失败: {exc}")
-            return ReadTestcaseResponse(
+            log.error(f"MCP 获取测试用例参数验证失败: {exc}")
+            return GetTestcaseResponse(
                 status="error",
                 yaml_path=yaml_path,
                 mode=mode,
                 testcase=None,
+                is_valid=False,
+                errors=format_validation_error(exc),
                 error_message=f"参数验证失败: {exc}",
                 error_details={"error_type": "validation_error", "details": format_validation_error(exc)},
             )
         except Exception as exc:
-            log.error(f"MCP 读取测试用例失败: {exc}")
-            return ReadTestcaseResponse(
+            log.error(f"MCP 获取测试用例失败: {exc}")
+            return GetTestcaseResponse(
                 status="error",
                 yaml_path=yaml_path,
                 mode=mode,
                 testcase=None,
+                is_valid=False,
+                errors=[str(exc)],
                 error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
                 error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
             )
 
     @mcp.tool(
-        name="validate_testcase",
-        title="校验测试用例结构",
-        description="校验指定 YAML 测试用例结构是否符合规范，返回错误列表。\n\n"
-        "**参数说明**:\n"
-        "- `yaml_path`: YAML 文件路径（相对于 workspace）\n"
-        "- `workspace`: **必须**，指定项目根目录\n\n"
-        "**返回值**:\n"
-        "- `status: ok`: 校验通过\n"
-        "- `status: error`: 校验失败，errors 数组包含具体错误信息\n\n"
-        "示例:\n"
-        "```json\n"
-        "{\n"
-        "  \"yaml_path\": \"tests/auth_integration.yaml\",\n"
-        "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
-        "}\n"
-        "```",
-    )
-    def validate_testcase(
-        yaml_path: str,
-        workspace: str | None = None,
-    ) -> ValidateTestcaseResponse:
-        errors: list[str] = []
-        try:
-            yaml_full_path, _, _ = resolve_yaml_path(yaml_path, workspace)
-            raw_data = load_yaml_file(yaml_full_path)
-            parse_testcase_input(raw_data)
-        except ValidationError as exc:
-            errors = format_validation_error(exc)
-        except Exception as exc:
-            errors = [str(exc)]
-
-        if errors:
-            log.error(f"MCP 校验测试用例失败: {errors}")
-            return ValidateTestcaseResponse(status="error", errors=errors)
-        return ValidateTestcaseResponse(status="ok", errors=[])
-
-    @mcp.tool(
         name="write_testcase",
-        title="写入测试用例并生成 pytest 脚本",
-        description="根据输入的测试用例结构写入 YAML 文件，并生成对应的 pytest 用例脚本。\n\n"
-        "**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。\n\n"
-        "**testcase 格式说明**:\n"
+        title="写入/生成测试用例",
+        description="写入 YAML 测试用例并生成 pytest 脚本，或仅重新生成已存在 YAML 对应的 pytest 脚本。\n\n"
+        "**两种模式**:\n"
+        "1. **写入模式**（传入 testcase）: 创建/更新 YAML 文件并生成 pytest 脚本\n"
+        "2. **重新生成模式**（不传 testcase）: 仅基于已存在的 YAML 重新生成 pytest 脚本\n\n"
+        "**⚠️ 重要提醒**:\n"
+        "- 必须传递 `workspace` 参数指定项目根目录\n"
+        "- **强烈建议**传入 `host` 参数指定 API 服务地址，否则需要配置全局变量\n\n"
+        "**testcase 完整格式**:\n"
         "```json\n"
         "{\n"
         "  \"name\": \"测试用例名称\",\n"
         "  \"description\": \"可选描述\",\n"
+        "  \"host\": \"http://localhost:8000\",  // ✅ 强烈建议填写，否则需要全局配置\n"
         "  \"steps\": [\n"
         "    {\n"
         "      \"id\": \"步骤唯一标识\",\n"
@@ -219,23 +215,49 @@ def register_testcase_tools(mcp: FastMCP) -> None:
         "  ]\n"
         "}\n"
         "```\n\n"
-        "**assert.type 支持的断言类型**:\n"
-        "- `status_code`: 状态码断言，expected 为数字如 200, 201, 401, 404\n"
-        "- `equals`: 精确匹配，field 为响应字段路径，expected 为期望值\n"
-        "- `not_equals`: 不匹配，field 为响应字段路径，expected 为不期望的值\n"
-        "- `contains`: 包含，field 为响应字段路径，expected 为期望包含的值\n"
-        "- `length`: 长度断言，field 为响应字段路径，expected 为期望长度\n\n"
-        "**变量引用**: 支持使用 `{{上一个步骤id.response.字段路径}}` 引用前序响应数据",
+        "**参数说明**:\n"
+        "- `yaml_path`: YAML 文件路径（相对于 workspace），**必须**\n"
+        "- `testcase`: 可选，测试用例数据，不传则仅重新生成 py\n"
+        "- `overwrite`: 默认 true，覆盖已存在的文件\n"
+        "- `workspace`: **必须**，指定项目根目录\n\n"
+        "**示例**:\n"
+        "```json\n"
+        "# 写入 + 生成\n"
+        "{\n"
+        "  \"yaml_path\": \"tests/auth_test.yaml\",\n"
+        "  \"testcase\": {...},\n"
+        "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
+        "}\n\n"
+        "# 仅重新生成 py（当 YAML 已存在时）\n"
+        "{\n"
+        "  \"yaml_path\": \"tests/auth_test.yaml\",\n"
+        "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
+        "}\n"
+        "```\n\n"
+        "💡 **提示**: 如果测试用例需要访问特定的 API 服务器，请务必在 `host` 字段中填写完整地址（如 `http://localhost:8000`）。如果不指定 `host`，测试将依赖项目的全局环境配置。",
     )
     def write_testcase(
         yaml_path: str,
-        testcase: TestcaseModel | dict | str,
-        overwrite: bool = False,
+        testcase: TestcaseModel | dict | str | None = None,
+        overwrite: bool = True,
         workspace: str | None = None,
     ) -> GenerateResponse:
         try:
-            testcase_model = parse_testcase_input(testcase)
             yaml_full_path, yaml_relative_path, repo_root = resolve_yaml_path(yaml_path, workspace)
+
+            # 判断执行模式
+            is_write_mode = testcase is not None
+
+            if is_write_mode:
+                # ========== 写入模式 ==========
+                testcase_model = parse_testcase_input(testcase)
+            else:
+                # ========== 重新生成模式 ==========
+                if not yaml_full_path.exists():
+                    raise ValueError(f"YAML 文件不存在: {yaml_relative_path}")
+                yaml_data = load_yaml_file(yaml_full_path)
+                testcase_model = parse_testcase_input(yaml_data)
+                log.info(f"[MCP] 重新生成模式: 读取现有 YAML 文件")
 
             # 检查路径是否存在
             if not repo_root.exists() or not repo_root.is_dir():
@@ -247,24 +269,40 @@ def register_testcase_tools(mcp: FastMCP) -> None:
                 workspace=workspace,
             )
 
-            if yaml_full_path.exists() and not overwrite:
-                raise ValueError("YAML 文件已存在，未开启覆盖写入")
+            # 写入模式：检查文件存在性
+            if is_write_mode:
+                if yaml_full_path.exists() and not overwrite:
+                    raise ValueError("YAML 文件已存在，未开启覆盖写入")
+
+            # pytest 文件检查（两种模式都需要）
             if py_full_path.exists() and not overwrite:
                 raise ValueError("pytest 文件已存在，未开启覆盖写入")
 
-            yaml_full_path.parent.mkdir(parents=True, exist_ok=True)
-            test_data = build_testcase_yaml(testcase_model)
-            with yaml_full_path.open("w", encoding="utf-8") as file:
-                yaml.safe_dump(test_data, file, allow_unicode=True, sort_keys=False)
+            # 写入模式：写入 YAML
+            if is_write_mode:
+                yaml_full_path.parent.mkdir(parents=True, exist_ok=True)
+                test_data = build_testcase_yaml(testcase_model)
+                with yaml_full_path.open("w", encoding="utf-8") as file:
+                    yaml.safe_dump(test_data, file, allow_unicode=True, sort_keys=False)
 
+            # 删除已存在的 py（覆盖模式）
             if overwrite and py_full_path.exists():
                 py_full_path.unlink()
 
             # 使用 repo_root 作为 base_dir，确保 CaseGenerator 能正确计算相对路径
             base_dir = str(repo_root)
+            # 必须传入绝对路径，因为 MCP server 的工作目录不是目标项目目录
+            yaml_absolute_path = str(yaml_full_path)
+            # test_cases 输出目录也需要是绝对路径
+            output_dir = str(repo_root / "test_cases")
+
+            log.info(f"[MCP] write_testcase: mode={'写入' if is_write_mode else '重新生成'}")
+            log.info(f"[MCP] write_testcase: yaml_absolute_path={yaml_absolute_path}")
+            log.info(f"[MCP] write_testcase: expected py_full_path={py_full_path}")
 
             CaseGenerator().generate_test_cases(
-                project_yaml_list=[yaml_relative_path],
+                project_yaml_list=[yaml_absolute_path],
+                output_dir=output_dir,
                 base_dir=base_dir
             )
             if not py_full_path.exists():
@@ -304,76 +342,6 @@ def register_testcase_tools(mcp: FastMCP) -> None:
                 written_files=[],
                 error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
                 error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__}
-            )
-
-    @mcp.tool(
-        name="regenerate_py",
-        title="重新生成 pytest 文件",
-        description="根据已存在的 YAML 测试用例重新生成 pytest 脚本。\n\n"
-        "**使用场景**:\n"
-        "- YAML 文件已存在但 py 脚本丢失或损坏\n"
-        "- 修改了 YAML 需要重新生成对应的 pytest 脚本\n\n"
-        "**参数说明**:\n"
-        "- `yaml_path`: YAML 文件路径（相对于 workspace）\n"
-        "- `overwrite`: 默认 true，覆盖已存在的 py 文件\n"
-        "- `workspace`: **必须**，指定项目根目录\n\n"
-        "示例:\n"
-        "```json\n"
-        "{\n"
-        "  \"yaml_path\": \"tests/auth_integration.yaml\",\n"
-        "  \"overwrite\": true,\n"
-        "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
-        "}\n"
-        "```",
-    )
-    def regenerate_py(
-        yaml_path: str,
-        overwrite: bool = True,
-        workspace: str | None = None,
-    ) -> RegenerateResponse:
-        try:
-            yaml_full_path, yaml_relative_path, repo_root = resolve_yaml_path(yaml_path, workspace)
-            if not yaml_full_path.exists():
-                raise ValueError(f"YAML 文件不存在: {yaml_relative_path}")
-            raw_data = load_yaml_file(yaml_full_path)
-            testcase_model = parse_testcase_input(raw_data)
-            py_full_path, py_relative_path = expected_py_path(
-                yaml_full_path=yaml_full_path,
-                testcase_name=testcase_model.name,
-                workspace=workspace,
-            )
-            if overwrite and py_full_path.exists():
-                py_full_path.unlink()
-            CaseGenerator().generate_test_cases(project_yaml_list=[yaml_relative_path])
-            if not py_full_path.exists():
-                raise ValueError("pytest 文件未生成，请检查测试用例数据格式是否正确")
-            return RegenerateResponse(
-                status="ok",
-                written_files=[yaml_relative_path, py_relative_path],
-            )
-        except ValidationError as exc:
-            log.error(f"MCP 重新生成 pytest 参数验证失败: {exc}")
-            return RegenerateResponse(
-                status="error",
-                written_files=[],
-                error_message=f"参数验证失败: {exc}",
-                error_details={"error_type": "validation_error", "details": format_validation_error(exc)},
-            )
-        except ValueError as exc:
-            log.error(f"MCP 重新生成 pytest 业务验证失败: {exc}")
-            return RegenerateResponse(
-                status="error",
-                written_files=[],
-                error_message=str(exc),
-                error_details={"error_type": "value_error", "message": str(exc)},
-            )
-        except Exception as exc:
-            log.error(f"MCP 重新生成 pytest 失败: {exc}")
-            return RegenerateResponse(
-                status="error",
-                written_files=[],
-                error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
-                error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
             )
 
     @mcp.tool(

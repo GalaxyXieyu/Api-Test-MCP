@@ -63,25 +63,39 @@ def get_python_path(repo_root: Path) -> str:
             return "uv"
         log.warning("pyproject.toml 存在但 uv 未安装，回退到其他 Python 解释器")
 
-    # 查找 venv 路径
-    venv_python = repo_root / ".venv" / "bin" / "python"
-    if venv_python.exists() and os.access(venv_python, os.X_OK):
-        log.info(f"使用 .venv Python: {venv_python}")
-        return str(venv_python)
+    # 查找 venv 路径（检查 .venv 和 venv 两种常见命名）
+    venv_paths = [
+        repo_root / ".venv" / "bin" / "python",
+        repo_root / "venv" / "bin" / "python",
+    ]
+    for venv_python in venv_paths:
+        if venv_python.exists() and os.access(venv_python, os.X_OK):
+            log.info(f"使用 venv Python: {venv_python}")
+            return str(venv_python)
 
-    # Conda 环境检测
-    conda_python = repo_root / ".conda" / "bin" / "python"
-    if conda_python.exists() and os.access(conda_python, os.X_OK):
-        log.info(f"使用 conda Python: {conda_python}")
-        return str(conda_python)
+    # Conda 环境检测（检查 .conda 和 conda 两种常见命名）
+    conda_paths = [
+        repo_root / ".conda" / "bin" / "python",
+        repo_root / "conda" / "bin" / "python",
+    ]
+    for conda_python in conda_paths:
+        if conda_python.exists() and os.access(conda_python, os.X_OK):
+            log.info(f"使用 conda Python: {conda_python}")
+            return str(conda_python)
 
     # 回退到系统 Python
     log.warning(f"未找到项目 Python 解释器，回退到系统 Python: {sys.executable}")
     return sys.executable
 
 
-def run_pytest(pytest_path: str, repo_root: Path) -> dict:
-    """执行 pytest 并返回结果"""
+def run_pytest(pytest_path: str, repo_root: Path, python_path: str | None = None) -> dict:
+    """执行 pytest 并返回结果
+
+    Args:
+        pytest_path: pytest 文件路径
+        repo_root: 项目根目录
+        python_path: 可选的 Python 解释器路径，如果不指定则自动检测
+    """
     start_time = time.time()
     result_data = {
         "test_name": "",
@@ -93,8 +107,11 @@ def run_pytest(pytest_path: str, repo_root: Path) -> dict:
     }
 
     try:
-        # 获取正确的 Python 路径
-        python_path = get_python_path(repo_root)
+        # 如果指定了 Python 路径则使用它，否则自动检测
+        if python_path:
+            log.info(f"使用指定的 Python: {python_path}")
+        else:
+            python_path = get_python_path(repo_root)
 
         # 构建 pytest 命令
         if python_path == "uv":
@@ -177,10 +194,22 @@ def run_pytest(pytest_path: str, repo_root: Path) -> dict:
     return result_data
 
 
-def execute_single_test(yaml_path: str, repo_root: Path) -> TestResultModel:
-    """执行单个测试用例并返回结果"""
+def execute_single_test(yaml_path: str, repo_root: Path, python_path: str | None = None) -> TestResultModel:
+    """执行单个测试用例并返回结果
+
+    Args:
+        yaml_path: YAML 文件路径
+        repo_root: 项目根目录
+        python_path: 可选的 Python 解释器路径
+    """
     try:
-        yaml_full_path, yaml_relative_path, _ = resolve_yaml_path(yaml_path)
+        # 必须传递 workspace 参数，确保路径解析正确
+        workspace = str(repo_root)
+        yaml_full_path, yaml_relative_path, _ = resolve_yaml_path(yaml_path, workspace)
+
+        log.info(f"[execute_single_test] yaml_path={yaml_path}, workspace={workspace}")
+        log.info(f"[execute_single_test] yaml_full_path={yaml_full_path}")
+
         data = load_yaml_file(yaml_full_path)
 
         # 使用统一的类型检测函数
@@ -193,7 +222,8 @@ def execute_single_test(yaml_path: str, repo_root: Path) -> TestResultModel:
             testcase_model = parse_testcase_input(data)
         test_name = testcase_model.name
 
-        py_full_path, _ = expected_py_path(yaml_full_path, test_name)
+        py_full_path, _ = expected_py_path(yaml_full_path, test_name, workspace)
+        log.info(f"[execute_single_test] py_full_path={py_full_path}")
 
         if not py_full_path.exists():
             return TestResultModel(
@@ -204,8 +234,8 @@ def execute_single_test(yaml_path: str, repo_root: Path) -> TestResultModel:
                 error_message="pytest 文件不存在，请先生成",
             )
 
-        # 执行测试
-        result_data = run_pytest(str(py_full_path), repo_root)
+        # 执行测试（传入自定义 Python 路径）
+        result_data = run_pytest(str(py_full_path), repo_root, python_path)
 
         return TestResultModel(
             test_name=result_data["test_name"],

@@ -87,21 +87,28 @@ def expected_py_path(
     _, tests_root, test_cases_root = get_roots(workspace)
     repo_root = tests_root.parent
 
-    # 计算 directory_path：YAML 文件相对于 repo_root 的父目录
+    # 计算 directory_path：YAML 文件相对于 repo_root 的目录结构
     # 例如：tests/integration_auth.yaml → directory_path = "tests"
+    # 例如：tests/subdir/foo.yaml → directory_path = "tests/subdir"
     if yaml_full_path.is_relative_to(tests_root):
         # YAML 在 tests 目录下，使用 tests 下的相对路径
         relative_to_tests = yaml_full_path.relative_to(tests_root)
         directory_path = relative_to_tests.parent
         # 如果 relative_to_tests 只有一层（如 tests/foo.yaml），parent 是 Path('.')
+        # 这种情况下使用 tests 作为目录名
         if str(directory_path) == '.':
-            directory_path = tests_root.name  # 使用 tests 作为目录名
+            directory_path = Path(tests_root.name)  # 使用 tests 作为目录名
         else:
             directory_path = Path(tests_root.name) / directory_path
     else:
         # YAML 不在 tests 目录下
         relative_to_repo = yaml_full_path.relative_to(repo_root)
         directory_path = relative_to_repo.parent
+        # 如果只有一层，directory_path 为空，需要特殊处理
+        if not str(directory_path):
+            directory_path = Path(relative_to_repo.parts[0]) if relative_to_repo.parts else Path()
+        elif str(directory_path) == '.':
+            directory_path = Path()
 
     py_filename = f"test_{testcase_name}.py"
     py_full_path = (test_cases_root / directory_path / py_filename).resolve(strict=False)

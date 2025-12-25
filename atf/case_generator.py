@@ -57,6 +57,11 @@ class CaseGenerator:
 		:param output_dir: 测试用例文件生成目录
 		:param base_dir: 基准目录，用于计算相对路径
 		"""
+		log.info(f"[CaseGenerator] _process_single_yaml called:")
+		log.info(f"[CaseGenerator]   yaml_file={yaml_file}")
+		log.info(f"[CaseGenerator]   output_dir={output_dir}")
+		log.info(f"[CaseGenerator]   base_dir={base_dir}")
+
 		# 读取YAML文件内容
 		_test_data = self.load_test_data(yaml_file)
 		validate_test_data = self.validate_test_data(_test_data)
@@ -76,8 +81,12 @@ class CaseGenerator:
 			path_components.pop()  # 移除最后一个元素
 		directory_path = os.path.join(*path_components) if path_components else ""
 		directory_path = directory_path.rstrip(os.sep)	# 确保路径不以斜杠结尾
-		
-		
+
+		log.info(f"[CaseGenerator] Path calculation:")
+		log.info(f"[CaseGenerator]   relative_path={relative_path}")
+		log.info(f"[CaseGenerator]   path_components={path_components}")
+		log.info(f"[CaseGenerator]   project_name={project_name}")
+		log.info(f"[CaseGenerator]   directory_path={directory_path}")
 		
 		module_name = test_data['name']
 		description = test_data.get('description')
@@ -94,7 +103,12 @@ class CaseGenerator:
 			file_path = os.path.join(output_dir, directory_path, file_name)
 		else:
 			file_path = os.path.join('test_cases', directory_path, file_name)
-		
+
+		log.info(f"[CaseGenerator] File path generation:")
+		log.info(f"[CaseGenerator]   file_name={file_name}")
+		log.info(f"[CaseGenerator]   file_path={file_path}")
+		log.info(f"[CaseGenerator]   dirname={os.path.dirname(file_path)}")
+
 		# 检查test_cases中对应的.py文件是否存在，存在则跳过生成
 		if os.path.exists(file_path):
 			log.info(f"测试用例文件已存在，跳过生成: {file_path}")
