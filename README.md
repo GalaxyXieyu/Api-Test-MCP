@@ -95,17 +95,7 @@ api-auto-test/
 │   └── utils/                              # 工具模块
 │       ├── __init__.py
 │       └── helpers.py                      # 辅助函数
-├── tests/                                  # 测试数据目录
-│   ├── demo_test.yaml                      # 演示测试用例
-│   ├── merchant/                           # 商户相关测试
-│   │   └── demo/
-│   │       ├── test_device_bind.yaml
-│   │       └── test_report_api_v2.yaml
-│   ├── nanshan/                            # 南山项目测试
-│   │   └── report/
-│   │       └── test_report_v2_*.yaml
-│   └── unit/                               # 单元测试
-│       └── demo_unittest.yaml
+├── tests/                                  # 测试数据目录（YAML 测试用例）
 ├── docs/                                   # 项目文档
 │   ├── mcp_dev_guide.md
 │   └── mcp_spec.md
