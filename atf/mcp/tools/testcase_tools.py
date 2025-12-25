@@ -260,13 +260,8 @@ def register_testcase_tools(mcp: FastMCP) -> None:
             if overwrite and py_full_path.exists():
                 py_full_path.unlink()
 
-            # 计算 base_dir：YAML 文件所在目录的父目录（即 tests 目录）
-            yaml_dir = yaml_full_path.parent
-            tests_root = repo_root / "tests"
-            if yaml_dir.is_relative_to(tests_root):
-                base_dir = str(yaml_dir.relative_to(repo_root))
-            else:
-                base_dir = str(yaml_dir)
+            # 使用 repo_root 作为 base_dir，确保 CaseGenerator 能正确计算相对路径
+            base_dir = str(repo_root)
 
             CaseGenerator().generate_test_cases(
                 project_yaml_list=[yaml_relative_path],
