@@ -14,16 +14,16 @@ class CaseGenerator:
 		"""
 		根据YAML文件生成测试用例并保存到指定目录
 		:param project_yaml_list: 列表形式，项目名称或YAML文件路径
-		:param output_dir: 测试用例文件生成目录
-		:param base_dir: 基准目录，用于计算相对路径，默认 'tests'
+		:param output_dir: 测试用例文件生成目录，默认 'tests/scripts'
+		:param base_dir: 基准目录，用于计算相对路径，默认 'tests/cases'
 		"""
-		# 如果没有传入project_yaml_list，默认遍历tests目录下所有project
+		# 如果没有传入project_yaml_list，默认遍历 tests/cases 目录下所有 YAML
 		if not project_yaml_list:
-			project_yaml_list = ["tests/"]
+			project_yaml_list = ["tests/cases/"]
 
 		# 基准目录，用于计算相对路径
 		if base_dir is None:
-			base_dir = 'tests'
+			base_dir = 'tests/cases'
 
 		# 遍历传入的project_yaml_list
 		for item in project_yaml_list:
@@ -32,12 +32,12 @@ class CaseGenerator:
 			elif os.path.isfile(item) and item.endswith('.yaml'):  # 如果是单个YAML文件
 				self._process_single_yaml(item, output_dir, base_dir)
 			else:  # 如果是项目名称，如 merchant
-				project_dir = os.path.join("tests", item)
+				project_dir = os.path.join("tests", "cases", item)
 				self._process_project_dir(project_dir, output_dir, base_dir)
 		
 		log.info("Test automation framework execution completed")
 	
-	def _process_project_dir(self, project_dir, output_dir, base_dir='tests'):
+	def _process_project_dir(self, project_dir, output_dir, base_dir='tests/cases'):
 		"""
 		处理项目目录，遍历项目下所有YAML文件生成测试用例
 		:param project_dir: 项目目录路径
@@ -50,7 +50,7 @@ class CaseGenerator:
 					yaml_file = os.path.join(root, file)
 					self._process_single_yaml(yaml_file, output_dir, base_dir)
 	
-	def _process_single_yaml(self, yaml_file, output_dir, base_dir='tests'):
+	def _process_single_yaml(self, yaml_file, output_dir, base_dir='tests/cases'):
 		"""
 		处理单个YAML文件，生成对应的测试用例文件
 		:param yaml_file: YAML文件路径
@@ -102,7 +102,7 @@ class CaseGenerator:
 		if output_dir:
 			file_path = os.path.join(output_dir, directory_path, file_name)
 		else:
-			file_path = os.path.join('test_cases', directory_path, file_name)
+			file_path = os.path.join('tests', 'scripts', directory_path, file_name)
 
 		log.info(f"[CaseGenerator] File path generation:")
 		log.info(f"[CaseGenerator]   file_name={file_name}")
@@ -374,4 +374,4 @@ class CaseGenerator:
 
 if __name__ == '__main__':
 	CG = CaseGenerator()
-	CG.generate_test_cases(project_yaml_list=["tests/"])
+	CG.generate_test_cases(project_yaml_list=["tests/cases/"])

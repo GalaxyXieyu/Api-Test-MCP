@@ -314,7 +314,7 @@ def run_pytest(pytest_path: str, repo_root: Path, python_path: str | None = None
                 log.info(f"项目 venv 缺少 atf 模块，通过 PYTHONPATH 添加 api-auto-test")
 
         # 构建 pytest 命令
-        allure_dir = repo_root / "test_cases" / "allure-results"
+        allure_dir = repo_root / "tests" / "allure-results"
         if python_path == "uv":
             cmd = ["uv", "run", "pytest", pytest_path, "-v", "--tb=short", "-q", "--alluredir", str(allure_dir)]
         else:
@@ -391,7 +391,7 @@ def run_pytest(pytest_path: str, repo_root: Path, python_path: str | None = None
 
         # 自动生成 Allure 报告
         if allure_dir.exists() and _ensure_allure_available():
-            report_dir = repo_root / "test_cases" / "allure-report"
+            report_dir = repo_root / "tests" / "allure-report"
             try:
                 subprocess.run(
                     ["allure", "generate", str(allure_dir), "-o", str(report_dir), "--clean"],

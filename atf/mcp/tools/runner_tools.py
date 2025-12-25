@@ -62,12 +62,12 @@ def register_runner_tools(mcp: FastMCP) -> None:
         "```json\n"
         "# 单个测试\n"
         "{\n"
-        "  \"yaml_path\": \"tests/auth_integration.yaml\",\n"
+        "  \"yaml_path\": \"tests/cases/auth_integration.yaml\",\n"
         "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
         "}\n\n"
         "# 批量测试\n"
         "{\n"
-        "  \"root_path\": \"tests\",\n"
+        "  \"root_path\": \"tests/cases\",\n"
         "  \"test_type\": \"integration\",\n"
         "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\",\n"
         "  \"python_path\": \"/Volumes/DATABASE/code/glam-cart/backend/venv/bin/python\"\n"
@@ -140,8 +140,8 @@ def register_runner_tools(mcp: FastMCP) -> None:
                 start_time = time.time()
                 results = []
 
-                repo_root, tests_root, _ = get_roots(workspace)
-                tests_root_resolved = tests_root.resolve(strict=False)
+                repo_root, _, cases_root, _ = get_roots(workspace)
+                cases_root_resolved = cases_root.resolve(strict=False)
 
                 if root_path:
                     raw_path = Path(root_path)
@@ -150,7 +150,7 @@ def register_runner_tools(mcp: FastMCP) -> None:
                     else:
                         base_dir = (repo_root / raw_path).resolve(strict=False)
                 else:
-                    base_dir = tests_root_resolved
+                    base_dir = cases_root_resolved
 
                 if not base_dir.exists():
                     return RunTestsResponse(
@@ -163,7 +163,7 @@ def register_runner_tools(mcp: FastMCP) -> None:
                 yaml_files = list(base_dir.rglob("*.yaml"))
                 filtered_files = []
                 for yaml_file in yaml_files:
-                    if not yaml_file.is_relative_to(tests_root_resolved):
+                    if not yaml_file.is_relative_to(cases_root_resolved):
                         continue
                     try:
                         data = load_yaml_file(yaml_file)
@@ -186,7 +186,7 @@ def register_runner_tools(mcp: FastMCP) -> None:
                         yaml_relative = yaml_file.relative_to(repo_root).as_posix()
                         if yaml_file.is_dir():
                             for sub_yaml in yaml_file.rglob("*.yaml"):
-                                if sub_yaml.is_relative_to(tests_root_resolved):
+                                if sub_yaml.is_relative_to(cases_root_resolved):
                                     result = execute_single_test(str(sub_yaml), repo_root, python_path)
                                     results.append(result)
                         else:

@@ -23,7 +23,10 @@ yaml = _yaml
 # ==================== 常量定义 ====================
 REPO_ROOT = Path(os.getenv("ATF_REPO_ROOT", Path(__file__).resolve().parent.parent.parent))
 TESTS_ROOT = REPO_ROOT / "tests"
-TEST_CASES_ROOT = REPO_ROOT / "test_cases"
+CASES_ROOT = TESTS_ROOT / "cases"      # YAML 测试用例目录
+SCRIPTS_ROOT = TESTS_ROOT / "scripts"  # 生成的 py 脚本目录
+# 兼容旧版本
+TEST_CASES_ROOT = SCRIPTS_ROOT
 
 # pytest 执行常量
 PYTEST_TIMEOUT = 300  # 5分钟超时
@@ -31,28 +34,40 @@ MAX_ERROR_LENGTH = 500  # 错误信息最大长度
 MAX_HISTORY_SIZE = 1000  # 历史记录最大条数
 
 
-def get_roots(workspace: str | None = None) -> tuple[Path, Path, Path]:
-    """根据 workspace 参数返回 (repo_root, tests_root, test_cases_root)"""
+def get_roots(workspace: str | None = None) -> tuple[Path, Path, Path, Path]:
+    """根据 workspace 参数返回 (repo_root, tests_root, cases_root, scripts_root)
+    
+    目录结构：
+    - tests/cases/   - YAML 测试用例
+    - tests/scripts/ - 生成的 py 脚本
+    """
     if workspace:
         repo = Path(workspace).resolve(strict=False)
     else:
         repo = REPO_ROOT
-    return repo, repo / "tests", repo / "test_cases"
+    tests = repo / "tests"
+    return repo, tests, tests / "cases", tests / "scripts"
 
 
 def resolve_yaml_path(
     yaml_path: str, workspace: str | None = None
 ) -> tuple[Path, str, Path]:
-    """返回 (yaml_full_path, yaml_relative_path, repo_root)"""
-    repo_root, tests_root, _ = get_roots(workspace)
+    """返回 (yaml_full_path, yaml_relative_path, repo_root)
+    
+    YAML 文件应放在 tests/cases/ 目录下
+    """
+    repo_root, _, cases_root, _ = get_roots(workspace)
     raw_path = Path(yaml_path)
     if raw_path.is_absolute():
         normalized = raw_path.resolve(strict=False)
     else:
-        normalized = (repo_root / raw_path).resolve(strict=False)
+        # 如果是相对路径，优先在 cases_root 下查找
+        if (cases_root / raw_path).exists():
+            normalized = (cases_root / raw_path).resolve(strict=False)
+        else:
+            normalized = (repo_root / raw_path).resolve(strict=False)
     if not normalized.name.endswith(".yaml"):
         raise ValueError("yaml_path 必须以 .yaml 结尾")
-    # 支持任意路径，不限制必须在 tests 目录下
     if not normalized.is_relative_to(repo_root):
         raise ValueError(f"yaml_path 必须在项目目录 {repo_root} 下")
     relative_path = normalized.relative_to(repo_root).as_posix()
@@ -62,17 +77,19 @@ def resolve_yaml_path(
 def resolve_tests_root(
     root_path: str | None = None, workspace: str | None = None
 ) -> tuple[Path, Path]:
-    """返回 (resolved_tests_root, repo_root)"""
-    repo_root, tests_root, _ = get_roots(workspace)
-    tests_root_resolved = tests_root.resolve(strict=False)
+    """返回 (resolved_cases_root, repo_root)
+    
+    默认返回 tests/cases/ 目录
+    """
+    repo_root, _, cases_root, _ = get_roots(workspace)
+    cases_root_resolved = cases_root.resolve(strict=False)
     if not root_path:
-        return tests_root_resolved, repo_root
+        return cases_root_resolved, repo_root
     raw_path = Path(root_path)
     if raw_path.is_absolute():
         normalized = raw_path.resolve(strict=False)
     else:
         normalized = (repo_root / raw_path).resolve(strict=False)
-    # 支持任意路径，不限制必须在 tests 目录下
     if not normalized.is_relative_to(repo_root):
         raise ValueError(f"root_path 必须在项目目录 {repo_root} 下")
     if not normalized.exists() or not normalized.is_dir():
@@ -83,35 +100,37 @@ def resolve_tests_root(
 def expected_py_path(
     yaml_full_path: Path, testcase_name: str, workspace: str | None = None
 ) -> tuple[Path, str]:
-    """返回 (py_full_path, py_relative_path)"""
-    _, tests_root, test_cases_root = get_roots(workspace)
-    repo_root = tests_root.parent
+    """返回 (py_full_path, py_relative_path)
+    
+    目录映射规则：
+    - tests/cases/xxx.yaml → tests/scripts/test_xxx.py
+    - tests/cases/subdir/xxx.yaml → tests/scripts/subdir/test_xxx.py
+    """
+    repo_root, _, cases_root, scripts_root = get_roots(workspace)
 
-    # 计算 directory_path：YAML 文件相对于 repo_root 的目录结构
-    # 例如：tests/integration_auth.yaml → directory_path = "tests"
-    # 例如：tests/subdir/foo.yaml → directory_path = "tests/subdir"
-    if yaml_full_path.is_relative_to(tests_root):
-        # YAML 在 tests 目录下，使用 tests 下的相对路径
-        relative_to_tests = yaml_full_path.relative_to(tests_root)
-        directory_path = relative_to_tests.parent
-        # 如果 relative_to_tests 只有一层（如 tests/foo.yaml），parent 是 Path('.')
-        # 这种情况下使用 tests 作为目录名
+    # 计算 YAML 相对于 cases_root 的子目录结构
+    if yaml_full_path.is_relative_to(cases_root):
+        # YAML 在 tests/cases/ 下
+        relative_to_cases = yaml_full_path.relative_to(cases_root)
+        directory_path = relative_to_cases.parent
         if str(directory_path) == '.':
-            directory_path = Path(tests_root.name)  # 使用 tests 作为目录名
-        else:
-            directory_path = Path(tests_root.name) / directory_path
+            directory_path = Path()
     else:
-        # YAML 不在 tests 目录下
-        relative_to_repo = yaml_full_path.relative_to(repo_root)
-        directory_path = relative_to_repo.parent
-        # 如果只有一层，directory_path 为空，需要特殊处理
-        if not str(directory_path):
-            directory_path = Path(relative_to_repo.parts[0]) if relative_to_repo.parts else Path()
-        elif str(directory_path) == '.':
+        # 兼容旧路径：YAML 不在 cases_root 下，尝试保持相对结构
+        try:
+            tests_root = cases_root.parent
+            if yaml_full_path.is_relative_to(tests_root):
+                relative_to_tests = yaml_full_path.relative_to(tests_root)
+                directory_path = relative_to_tests.parent
+                if str(directory_path) == '.':
+                    directory_path = Path()
+            else:
+                directory_path = Path()
+        except ValueError:
             directory_path = Path()
 
     py_filename = f"test_{testcase_name}.py"
-    py_full_path = (test_cases_root / directory_path / py_filename).resolve(strict=False)
+    py_full_path = (scripts_root / directory_path / py_filename).resolve(strict=False)
     py_relative_path = py_full_path.relative_to(repo_root).as_posix()
     return py_full_path, py_relative_path
 
@@ -244,7 +263,9 @@ def truncate_text(text: str, max_length: int = MAX_ERROR_LENGTH) -> str:
 __all__ = [
     "REPO_ROOT",
     "TESTS_ROOT",
-    "TEST_CASES_ROOT",
+    "CASES_ROOT",
+    "SCRIPTS_ROOT",
+    "TEST_CASES_ROOT",  # 兼容旧版本
     "PYTEST_TIMEOUT",
     "MAX_ERROR_LENGTH",
     "MAX_HISTORY_SIZE",

@@ -48,7 +48,7 @@ def register_testcase_tools(mcp: FastMCP) -> None:
         "示例:\n"
         "```json\n"
         "{\n"
-        "  \"root_path\": \"tests\",\n"
+        "  \"root_path\": \"tests/cases\",\n"
         "  \"test_type\": \"integration\",\n"
         "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
         "}\n"
@@ -112,7 +112,7 @@ def register_testcase_tools(mcp: FastMCP) -> None:
         "示例:\n"
         "```json\n"
         "{\n"
-        "  \"yaml_path\": \"tests/auth_integration.yaml\",\n"
+        "  \"yaml_path\": \"tests/cases/auth_integration.yaml\",\n"
         "  \"mode\": \"summary\",\n"
         "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
         "}\n"
@@ -220,17 +220,20 @@ def register_testcase_tools(mcp: FastMCP) -> None:
         "- `testcase`: 可选，测试用例数据，不传则仅重新生成 py\n"
         "- `overwrite`: 默认 true，覆盖已存在的文件\n"
         "- `workspace`: **必须**，指定项目根目录\n\n"
+        "**目录结构**:\n"
+        "- YAML 文件保存在: `tests/cases/`\n"
+        "- py 脚本生成在: `tests/scripts/`\n\n"
         "**示例**:\n"
         "```json\n"
         "# 写入 + 生成\n"
         "{\n"
-        "  \"yaml_path\": \"tests/auth_test.yaml\",\n"
+        "  \"yaml_path\": \"tests/cases/auth_test.yaml\",\n"
         "  \"testcase\": {...},\n"
         "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
         "}\n\n"
         "# 仅重新生成 py（当 YAML 已存在时）\n"
         "{\n"
-        "  \"yaml_path\": \"tests/auth_test.yaml\",\n"
+        "  \"yaml_path\": \"tests/cases/auth_test.yaml\",\n"
         "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
         "}\n"
         "```\n\n"
@@ -293,8 +296,8 @@ def register_testcase_tools(mcp: FastMCP) -> None:
             base_dir = str(repo_root)
             # 必须传入绝对路径，因为 MCP server 的工作目录不是目标项目目录
             yaml_absolute_path = str(yaml_full_path)
-            # test_cases 输出目录也需要是绝对路径
-            output_dir = str(repo_root / "test_cases")
+            # scripts 输出目录也需要是绝对路径
+            output_dir = str(repo_root / "tests" / "scripts")
 
             log.info(f"[MCP] write_testcase: mode={'写入' if is_write_mode else '重新生成'}")
             log.info(f"[MCP] write_testcase: yaml_absolute_path={yaml_absolute_path}")
@@ -358,7 +361,7 @@ def register_testcase_tools(mcp: FastMCP) -> None:
         "示例:\n"
         "```json\n"
         "{\n"
-        "  \"yaml_path\": \"tests/auth_integration.yaml\",\n"
+        "  \"yaml_path\": \"tests/cases/auth_integration.yaml\",\n"
         "  \"delete_py\": true,\n"
         "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
         "}\n"
