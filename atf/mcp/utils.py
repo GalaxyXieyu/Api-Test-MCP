@@ -52,9 +52,9 @@ def resolve_yaml_path(
         normalized = (repo_root / raw_path).resolve(strict=False)
     if not normalized.name.endswith(".yaml"):
         raise ValueError("yaml_path 必须以 .yaml 结尾")
-    tests_root_resolved = tests_root.resolve(strict=False)
-    if not normalized.is_relative_to(tests_root_resolved):
-        raise ValueError(f"yaml_path 必须位于 {tests_root_resolved} 目录下")
+    # 支持任意路径，不限制必须在 tests 目录下
+    if not normalized.is_relative_to(repo_root):
+        raise ValueError(f"yaml_path 必须在项目目录 {repo_root} 下")
     relative_path = normalized.relative_to(repo_root).as_posix()
     return normalized, relative_path, repo_root
 
