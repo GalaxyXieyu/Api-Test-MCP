@@ -72,8 +72,9 @@ def resolve_tests_root(
         normalized = raw_path.resolve(strict=False)
     else:
         normalized = (repo_root / raw_path).resolve(strict=False)
-    if not normalized.is_relative_to(tests_root_resolved):
-        raise ValueError(f"root_path 必须位于 {tests_root_resolved} 目录下")
+    # 支持任意路径，不限制必须在 tests 目录下
+    if not normalized.is_relative_to(repo_root):
+        raise ValueError(f"root_path 必须在项目目录 {repo_root} 下")
     if not normalized.exists() or not normalized.is_dir():
         raise ValueError("root_path 必须是已存在的目录")
     return normalized, repo_root
