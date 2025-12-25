@@ -1,560 +1,571 @@
-#### 1. 架构图
+# API Auto Test Framework
 
-```powershell
-+-------------------+
-|    config.yaml    | 配置文件，存储测试项目信息
-+---------+---------+
-          |
-          v
-+---------+---------+
-|  Config Manager   | 读取配置文件，存储配置信息到全局变量
-+---------+---------+
-          |
-          v
-+---------+---------+  
-| Global Variables  | 存储全局配置信息和 token
-+---------+---------+
-          |
-          v
-+---------+---------+  
-|  Auth Module      | 执行登录请求，获取并存储 token
-+---------+---------+
-          |
-          v
-+---------+---------+         +-----------------+    +---------+---------+    +----------------+
-|Test Case Runner   |<-------|  Generated Tests |<---|Test Case Generator|<---| Test Case Files |
-|  执行测试用例       |          | 自动生成的测试类 |    | 自动生成测试模块     |      |  YAML 文件存储   |
-+---------+---------+         +-----------------+    +---------+---------+    +----------------+
-          |
-          v
-+---------+---------+         +-----------------+       +-----------------+
-|  Request Handler  |<------->|  Variable Resolver |<-->| tools.py (外部函数) |
-|  处理 HTTP 请求    |          |  处理变量调用     |      +-----------------+
-+---------+---------+         +-----------------+
-          |
-          v
-+---------+---------+
-|  Assert Handler   | 处理断言
-+---------+---------+
-          |
-          v
-+---------+---------+
-|  Teardown Handler   | 处理后置操作
-+---------+---------+
-          |
-          v
-+---------+---------+
-|  Report Generator  | 生成测试报告
-+---------+---------+
-          |
-          v
-+---------+---------+
-| DingTalk Handler  | 发送测试通知到钉钉
-+---------+---------+
-          |
-          v
-+---------+---------+
-|   Log Manager     | 处理并存储日志信息
-+-------------------+
-```
+<div align="center">
 
-#### 2. 架构图模块详述
+![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
+![PyPI Version](https://img.shields.io/pypi/v/api-auto-test/latest)
+![License](https://img.shields.io/badge/license-MIT-green)
+![ pytest](https://img.shields.io/badge/pytest-8.0%2B-yellow)
 
-**Test Case Generator（测试用例生成器）**
+🚀 一个现代化的 API 接口自动化测试框架，支持 YAML 测试用例、MCP Server 集成、Allure 报告
 
-* 读取 YAML 测试用例文件，自动生成对应的 Python 测试模块文件。
+[English](README.md) | 简体中文
 
-* 自动编写 pytest 格式的测试类和测试方法。
-
-**Config Manager（配置管理器）**
-
-* 读取 config.yaml 文件，获取项目配置和DingTalk配置。
-
-* 将配置信息存储到 Global Variables 中，供框架其他部分使用。
-
-**Global Variables（全局变量）**
-
-* 用于存储全局的配置信息和认证 token，在测试框架的各个模块之间共享。
-
-**Auth Module（认证模块）**
-
-* 负责处理认证逻辑，通过登录请求获取 token。
-
-* 登录只执行一次，获取的 token 存储在 Global Variables 中。
-
-* 包含两个模块：auth.py、report_login_handler.py。auth.py编写项目具体的登录方法，report_login_handler.py提供项目登录判断逻辑。
-
-**Test Case Runner（测试用例执行）**
-
-* 负责执行测试用例，运行由 Test Case Generator 生成的测试脚本。
-
-**Request Handler（HTTP请求处理器）**
-
-* 处理 HTTP 请求，执行接口调用。
-
-**Variable Resolver（变量解析器）**
-
-* 处理测试用例中的变量解析，包括全局变量、步骤变量，以及调用外部函数（如 tools.py 中的函数）。
-
-* 变量表达式：'{{ *** }}'，如：调用tools.py中的函数获取'{{ tools.function_name(1, 2) }}'，全局变量获取'{{ merchant.token }}'，同一条测试用例中的请求步骤中获取'{{ step_id.data.id }}'
-
-**Assert Handler（断言处理器）**
-
-* 处理断言逻辑，校验测试结果是否符合预期。
-
-**Teardown Handler（后置处理器）**
-
-* 用于测试用例后置操作，如清除测试数据等。可调用接口，也可以操作数据库。
-
-**Log Manager（日志管理器）**
-
-* 负责处理和存储日志信息，日志文件保存在 log 目录中，帮助调试和分析。
-
-**Report Generator（生成测试报告）**
-
-* 支持生成Allure、pytest-html模版的HTML测试报告。
-
-**DingTalk Handler（钉钉机器人）**
-
-* 处理钉钉通知，将测试结果发送到指定的钉钉群。
-
-
-#### 3. 目录结构
-
-```powershell
-super_api_auto_test/
-├── config.yaml
-├── globals.py
-├── auth.py
-├── case_generator.py
-├── run_tests.py
-├── utils/
-│   ├── assert_handler.py
-│   ├── config_manager.py
-│   ├── dingtalk_handler.py
-│   ├── globals.py
-│   ├── log_manager.py
-│   ├── request_handler.py
-│   ├── variable_resolver.py
-│   ├── project_login_handler.py
-│   ├── teardown_handler.py
-│   ├── report_generator.py
-│   ├── tools.py
-├── tests/
-│   ├── project1/
-│   │   ├── test_case_1.yaml
-│   │   ├── test_case_2.yaml
-│   │   ├── ... (more generated tests)
-│   ├── project2/
-│   │   ├── module
-│   │   │   ├── test_case_3.yaml
-│   │   │   ├── test_case_4.yaml
-│   │   │   ├── ... (more generated tests)
-├── test_cases/
-│   ├── project1/
-│   │   ├── test_case_1.py
-│   │   ├── test_case_2.py
-│   │   ├── ... (more test case files)
-│   ├── project2/
-│   │   ├── module
-│   │   │   ├── test_case_3.py
-│   │   │   ├── test_case_4.py
-│   │   │   ├── ... (more test case files)
-├── conftest.py
-├── requirements.txt
-└── README.md
-```
-
-#### 4. 目录结构说明
-
-* config.yaml：配置文件，存储项目信息（环境、host、mysql、登录信息等）、DingTalk、WeChat Work、Feishu等配置信息。
-* auth.py：认证模块，测试项目如果需要登录获取 token，则在本模块定义登录函数。
-* run_tests.py：主执行文件，用于运行测试并触发钩子函数。
-* conftest.py：存储 pytest 的钩子函数，将测试结果存储到 Globals 中。
-* requirements.txt：项目依赖包管理
-* utils/
-    * globals.py：全局变量管理器 Globals，用于存储和访问全局数据（如项目配置、DingTalk 配置、测试结果等）。
-    * log_manager.py：日志管理器，负责记录框架中的日志信息。
-    * dingtalk_handler.py：DingTalk 消息发送工具类，处理和发送 DingTalk 通知。
-    * config_manager.py：读取配置文件信息，存储至全局变量。
-    * assert_handler.py：断言处理，执行测试用例时，负责处理用例数据中的assert字段。
-    * request_handler.py：HTTP请求处理。
-    * variable_resolver.py：变量解析，执行测试用例时，负责处理用例数据中的变量表达式。
-    * project_login_handler.py：项目登录处理，获取 token 或 cookie。1.用例执行前，本次测试用例涉及到的需要登录的项目；2. 处理后置方法中，登录需要登录的项目
-    * teardown_handler.py：测试用例后置方法处理。
-    * report_generator.py：测试报告处理，支持 Allure、pytest-html 模版。
-    * tools.py：自定义工具函数，可用于处理用例数据获取或其他。
-* tests/
-    * project_01/：被测项目1的测试数据配置，一个`.yaml`文件对应一条测试用例数据。
-        * test_case_1.yaml：
-    * project_02/
-        * module：被测项目2中模块 module 的测试用例配置
-            * test_case_2.yaml。
-* test_cases/
-    * project_01/
-        * test_case_1.py：被项目1的测试用例脚本（由GenerateTestcaseManager获取tests/project_01/test_case_1.yaml测试用例数据生成）。
-    * project_02/
-        * module
-            * test_case_2.py：被测项目2中模块 module 的测试用例脚本。
-* logs/：日志文件存储目录
-* html-reports/：测试报告存储目录
-
-#### 5. 使用步骤
-* **1). 注册项目**（如果需要）
-    * `config.yaml`用于存储测试项目配置信息，需要将被测项目的信息按照目前格式添加至该文件中。
-    * 可以加入第三方测试项目，但需要做改动，暂时不兼容。
-* **2). 登录调试**（如果需要）
-    * `auth.py`用于编写被测项目的登录方法。如果被测项目需要登录获取token，则需要先在这里编写对应方法并调试通过。
-* **3). 创建测试数据文件**
-    * `tests/`负责存储测试数据文件，在对应的项目（没有对应项目则先新建项目，测试用例文件会在`test_cases/`该项目下生成）下新建 yaml 测试数据文件，文件名为`test_+功能.yaml`，如merchant/test_device_bind_washing.yaml。
-    * 文件内容要以`testcase:`开头，这样才能被识别为测试数据文件。
-    * 具体格式及字段见 demo
-    * 生成对应的测试用例文件后，数据文件名不能改动，否则执行用例时会因为找不到该数据文件而无法读取测试数据。如果改名，则需要重新生成测试用例文件。
-    * 数据文件中修改了 name、id、project 这些字段后，则需要删除该文件对应的测试用例文件，重新生成新的测试用例文件，否则用例执行失败。
-* **4). 生成测试用例文件**
-    * `case_generator.py`负责生成测试用例，会根据传入的测试用例数据文件生成测试用例文件。
-    * 用例文件名为`test_name`.py，其中`name`为数据文件中的name字段。
-    * 指定数据文件生成，如：["tests/merchant/test_goods_delete_washing.yaml"]，会生成该数据文件对应的测试用例。
-    * 指定项目生成，如：["tests/merchant/"]，会针对 merchant/ 中所有的数据文件生成测试用例（自动去重）。
-    * 也可以不指定文件及项目，则传入：["tests/"]，会针对 tests/ 中所有项目下的所有数据文件生成测试用例（自动去重）。
-* **5). 运行测试用例**
-    * `run_tests.py`负责测试用例的执行，执行指定的测试用例。
-    * testcases 参数，指定执行测试用例
-        * 指定执行具体的测试用例文件，如：["test_cases/merchant/test_goods_delete_washing.py"]，会执行该测试用例。
-        * 指定执行项目中的所有测试用例，如：["test_cases/merchant/"]，会执行 merchant/ 中所有的测试用例。
-        * 也可以不指定文件及项目，则传入：["tests/"]，会执行 tests/ 中所有项目下的所有测试用例。
-    * env 参数，指定执行测试环境
-        * test，暂时不对测试环境进行测试。且测试环境与预发或生产环境的测试数据不一致，即不能共用一套测试数据文件，所以需要新建工程单独处理。
-        * pre，预发环境
-        * online，线上环境（或生产环境）
-    * report_type 参数，目前支持 Allure、pytest-html 两种HTML模版。
-
-#### 6. 注意事项
-* 1). 先安装项目依赖，具体见requirements.txt文件。
-* 2). 本地调试生成生成 Allure 报告时，本地需要配置好 Allure 工具。
-* 3). 在一条测试用例中，如果存在同一个接口需要调用多次时（调用多个接口的场景测试用例），测试数据文件（tests/ 目录下）中该接口的 id 不能同名，否则会报错。
-* 4). 修改了 tests/ 中的测试数据后，如果该测试数据已经在 test_cases/ 中生成了测试用例文件，则需要删除原来的测试用例文件，重新生成。ps：修改用例数据中某个 step 或 teardown 接口的请求参数、断言，不需要重新生成。
+</div>
 
 ---
 
-## MCP Server 安装与使用
+## ✨ 核心特性
 
-### 安装方式
+| 特性 | 描述 |
+|------|------|
+| 🧪 **YAML 用例管理** | 使用 YAML 文件定义测试用例，无需编写重复代码 |
+| 🤖 **MCP Server 集成** | 与 Claude Code 无缝集成，支持自然语言生成测试用例 |
+| 📊 **多格式报告** | 支持 Allure、pytest-html 等多种测试报告 |
+| 🔄 **变量解析引擎** | 支持全局变量、步骤间数据传递、外部函数调用 |
+| 🔐 **认证管理** | 自动处理 Token 获取和刷新 |
+| 📢 **多渠道通知** | 支持钉钉、飞书、企业微信等通知方式 |
 
-#### 方式一：发布到 PyPI 后安装（推荐）
+---
 
-```bash
-# 1. 发布到 PyPI（开发者操作）
-# twine upload --repository pypi dist/*
+## 🏗️ 系统架构
 
-# 2. 用户安装
-pipx install api-auto-test
+```mermaid
+graph TB
+    subgraph 配置层
+        C[config.yaml] --> CM[Config Manager]
+    end
+
+    subgraph 核心模块
+        CM --> GV[Global Variables]
+        GV --> AUTH[Auth Module]
+    end
+
+    subgraph 测试执行流
+        TF[Test Files<br/>YAML] --> CG[Case Generator]
+        CG --> TP[Test Scripts<br/>pytest]
+        TP --> TR[Test Runner]
+    end
+
+    subgraph 处理引擎
+        TR --> RH[Request Handler]
+        RH --> VR[Variable Resolver]
+        VR --> AH[Assert Handler]
+        AH --> TH[Teardown Handler]
+    end
+
+    subgraph 输出模块
+        TH --> RG[Report Generator]
+        TH --> NH[Notification Handler]
+        TH --> LM[Log Manager]
+    end
+
+    RH -.-> VR
+    VR -.-> EXT[External Functions]
 ```
 
-#### 方式二：从 GitHub 安装（发布前开发测试用）
+---
+
+## 📁 项目结构
+
+```
+api-auto-test/
+├── atf/                                    # 框架核心代码
+│   ├── __init__.py
+│   ├── auth.py                             # 认证模块
+│   ├── case_generator.py                   # 集成测试用例生成器
+│   ├── conftest.py                         # pytest 配置
+│   ├── mcp_server.py                       # MCP Server 服务
+│   ├── runner.py                           # 测试执行器
+│   ├── unit_case_generator.py              # 单元测试用例生成器
+│   ├── core/                               # 核心模块
+│   │   ├── __init__.py
+│   │   ├── assert_handler.py               # 断言处理器
+│   │   ├── config_manager.py               # 配置管理器
+│   │   ├── globals.py                      # 全局变量管理
+│   │   ├── log_manager.py                  # 日志管理器
+│   │   ├── login_handler.py                # 登录处理器
+│   │   ├── request_handler.py              # HTTP 请求处理器
+│   │   └── variable_resolver.py            # 变量解析器
+│   ├── handlers/                           # 处理器
+│   │   ├── __init__.py
+│   │   ├── notification_handler.py         # 通知处理器
+│   │   ├── report_generator.py             # 报告生成器
+│   │   └── teardown_handler.py             # 后置处理器
+│   └── utils/                              # 工具模块
+│       ├── __init__.py
+│       └── helpers.py                      # 辅助函数
+├── tests/                                  # 测试数据目录
+│   ├── demo_test.yaml                      # 演示测试用例
+│   ├── merchant/                           # 商户相关测试
+│   │   └── demo/
+│   │       ├── test_device_bind.yaml
+│   │       └── test_report_api_v2.yaml
+│   ├── nanshan/                            # 南山项目测试
+│   │   └── report/
+│   │       └── test_report_v2_*.yaml
+│   └── unit/                               # 单元测试
+│       └── demo_unittest.yaml
+├── docs/                                   # 项目文档
+│   ├── mcp_dev_guide.md
+│   └── mcp_spec.md
+├── config.yaml                             # 配置文件
+├── pyproject.toml                          # 项目配置
+├── requirements.txt                        # 生产依赖
+├── requirements-mcp.txt                    # MCP 服务依赖
+└── README.md                               # 项目说明
+```
+
+---
+
+## 🚀 快速开始
+
+### 1. 安装依赖
 
 ```bash
-# 1. 安装 uv（如果没有）
+# 使用 uv（推荐）
+uv pip install -r requirements.txt
+
+# 或使用 pip
+pip install -r requirements.txt
+```
+
+### 2. 配置项目
+
+编辑 `config.yaml`：
+
+```yaml
+# 配置文件示例
+projects:
+  merchant:
+    host: "https://api.merchant.example.com"
+    env: pre
+  nanshan:
+    host: "https://api.nanshan.example.com"
+    env: online
+
+notification:
+  dingtalk:
+    webhook: "https://oapi.dingtalk.com/robot/send?access_token=xxx"
+    secret: "SECxxx"
+
+database:
+  mysql:
+    host: "localhost"
+    port: 3306
+    user: "root"
+    password: "password"
+    database: "test_db"
+```
+
+### 3. 创建测试用例
+
+```yaml
+# tests/merchant/demo/test_device_bind.yaml
+testcase:
+  name: test_device_bind
+  description: 测试设备绑定接口
+  steps:
+    - id: login
+      name: 登录获取token
+      path: /api/v1/auth/login
+      method: POST
+      data:
+        username: "test_user"
+        password: "test_pass"
+      assert:
+        - type: status_code
+          expected: 200
+        - type: json_path
+          path: $.code
+          expected: 0
+
+    - id: bind_device
+      name: 绑定设备
+      path: /api/v1/devices/bind
+      method: POST
+      headers:
+        Authorization: "{{ login.data.token }}"
+      data:
+        device_id: "DEV001"
+        device_name: "测试设备"
+      assert:
+        - type: status_code
+          expected: 200
+        - type: json_path
+          path: $.data.device_id
+          expected: "DEV001"
+```
+
+### 4. 运行测试
+
+```bash
+# 运行所有测试
+pytest tests/ -v
+
+# 运行指定测试
+pytest tests/merchant/demo/test_device_bind.yaml -v
+
+# 生成 Allure 报告
+pytest tests/ --alluredir=report/allure
+allure serve report/allure
+```
+
+---
+
+## 📝 YAML 用例规范
+
+### 集成测试（testcase）
+
+```yaml
+testcase:
+  name: test_case_name          # 测试用例名称
+  description: 测试描述         # 可选，用例描述
+  project: project_name         # 项目标识
+  steps:                        # 测试步骤列表
+    - id: step_id               # 步骤唯一标识
+      name: 步骤名称            # 步骤名称
+      path: /api/endpoint       # 请求路径
+      method: GET               # 请求方法：GET/POST/PUT/DELETE
+      headers: {}               # 请求头
+      data: {}                  # 请求数据
+      params: {}                # URL 参数
+      files: {}                 # 文件上传
+      assert:                   # 断言列表
+        - type: status_code     # 状态码断言
+          expected: 200
+        - type: json_path      # JSON 路径断言
+          path: $.code
+          expected: 0
+  teardowns:                    # 后置操作（可选）
+    - id: cleanup
+      name: 清理测试数据
+      method: DELETE
+      path: /api/devices/DEV001
+```
+
+### 单元测试（unittest）
+
+```yaml
+unittest:
+  name: demo_unittest
+  description: 单元测试示例
+  env_type: venv              # 虚拟环境类型：venv/conda/uv
+  target:
+    module: src.service.demo_service  # 被测模块
+    class: DemoService        # 被测类（可选）
+    function: get_user        # 被测函数（可选）
+  fixtures:                   # 测试夹具（可选）
+    setup:
+      - type: action
+        target: instance
+        action: create
+        value:
+          class: DemoService
+    teardown:
+      - type: action
+        target: instance
+        action: destroy
+  cases:                      # 测试用例列表
+    - id: test_get_user
+      description: 测试获取用户
+      inputs:
+        args: [1]             # 函数参数
+        kwargs: {}            # 关键字参数
+      mocks:                  # Mock 配置（可选）
+        - target: requests.get
+          return_value:
+            json:
+              code: 0
+              data:
+                id: 1
+                name: "test_user"
+      assert:
+        - type: equals
+          field: result.name
+          expected: "test_user"
+        - type: exception
+          expected: null
+```
+
+### 断言类型
+
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| `status_code` | HTTP 状态码 | `expected: 200` |
+| `json_path` | JSON 路径断言 | `path: $.data.id` |
+| `equals` | 精确匹配 | `expected: "value"` |
+| `contains` | 包含断言 | `expected: "partial"` |
+| `regex` | 正则匹配 | `expected: "^\\d+$"` |
+| `length` | 长度断言 | `expected: 5` |
+| `exception` | 异常断言 | `expected: null` |
+
+---
+
+## 🔧 变量表达式
+
+框架支持丰富的变量表达式，用于数据传递和动态计算：
+
+```yaml
+# 全局变量引用
+Authorization: "{{ merchant.token }}"
+
+# 步骤间数据传递
+device_id: "{{ bind_device.data.device_id }}"
+
+# 外部函数调用
+timestamp: "{{ tools.get_timestamp() }}"
+random_str: "{{ tools.generate_uuid() }}"
+
+# 字符串拼接
+full_url: "{{ base_url }}{{ step1.data.path }}"
+```
+
+---
+
+## 🤖 MCP Server 集成
+
+### 1️⃣ 安装 uv（必需）
+
+uv 是新一代 Python 包管理器，用于安装和运行 MCP 服务器。
+
+**macOS / Linux：**
+```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# 2. 从 GitHub 安装
-pipx install git+https://github.com/your-username/api-auto-test.git
-
-# 3. 注册到 Claude Code
-api-auto-test-mcp install
 ```
 
-#### 方式三：本地开发模式
+**Windows（PowerShell）：**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
 
+**验证安装：**
+```bash
+uv --version
+```
+
+### 2️⃣ 安装 MCP 服务器
+
+**方式一：uvx 安装（推荐，等同于 pipx）**
+```bash
+uvx install git+https://github.com/GalaxyXieyu/Api-Test-MCP.git
+```
+
+**方式二：pipx 安装**
+```bash
+# 确保已安装 pipx
+pipx install git+https://github.com/GalaxyXieyu/Api-Test-MCP.git
+```
+
+**方式三：本地开发模式**
 ```bash
 cd /path/to/api-auto-test
 uv run mcp install atf/mcp_server.py --name "api-auto-test"
 ```
 
-**安装完成后**，Claude Code 会自动提示你重启，重启后 MCP 服务器即可使用。
+### 3️⃣ 配置到编辑器
 
-#### 方式四：pipx
-
-```bash
-pipx install api-auto-test
-```
-
-#### 方式五：pip
-
-```bash
-pip install api-auto-test
-```
-
-### Claude Code 配置
-
-安装后会自动配置 `.mcp.json`，或手动添加：
+安装完成后，需要将 MCP 服务器配置到你的编辑器中。复制以下 JSON 配置到对应编辑器的 MCP 设置中：
 
 ```json
 {
-  "command": "api-auto-test-mcp",
-  "args": ["--workspace", "${workspace}"]
+  "mcpServers": {
+    "api-auto-test-mcp": {
+      "command": "api-auto-test-mcp",
+      "args": ["--workspace", "${workspace}"]
+    }
+  }
 }
 ```
+
+**各编辑器配置方法：**
+
+| 编辑器 | 配置位置 | 操作 |
+|--------|---------|------|
+| **Claude Code** | `~/.claude/.mcp.json` | 直接运行 `api-auto-test-mcp install` 自动配置 |
+| **Cursor** | `~/.cursor/settings.json` 或 MCP 设置界面 | 手动添加上方 JSON |
+| **Continue (VSCode)** | `.vscode/mcp.json` | 在项目根目录创建文件 |
+| **Windsurf** | MCP 设置界面 | 手动添加上方 JSON |
+| **其他 MCP 客户端** | 对应设置页面 | 手动添加上方 JSON |
+
+**手动配置示例（Cursor）：**
+1. 打开 Cursor 设置
+2. 搜索 "MCP" 或 "Model Context Protocol"
+3. 点击 "Edit MCP Servers" 或添加新配置
+4. 粘贴上方 JSON 配置
+
+**Continue (VSCode) 项目级配置：**
+```json
+// .vscode/mcp.json
+{
+  "mcpServers": {
+    "api-auto-test-mcp": {
+      "command": "api-auto-test-mcp",
+      "args": ["--workspace", "${workspace}"]
+    }
+  }
+}
+```
+
+### 4️⃣ 验证安装
+
+```bash
+# 检查命令是否可用
+api-auto-test-mcp --help
+
+# 应该看到输出：
+# Usage: api-auto-test-mcp [OPTIONS] COMMAND [ARGS]...
+```
+
+### 5️⃣ 重启编辑器
+
+配置完成后，**重启编辑器**即可使用 MCP 工具。
 
 ### MCP 工具
 
 | 工具 | 说明 |
 |------|------|
-| `write_testcase` | 写入测试用例并生成 pytest 脚本 |
-| `write_unittest` | 写入单元测试并生成 pytest 脚本 |
-| `read_testcase` | 读取测试用例内容 |
-| `list_testcases` | 列出测试用例 |
-| `regenerate_py` | 重新生成 pytest |
+| `write_testcase` | 创建集成测试用例 |
+| `write_unittest` | 创建单元测试用例 |
+| `list_testcases` | 列出所有测试用例 |
+| `read_testcase` | 读取测试用例详情 |
+| `regenerate_py` | 重新生成测试脚本 |
+| `validate_testcase` | 校验测试用例格式 |
 | `delete_testcase` | 删除测试用例 |
 
-### 集成测试示例
+### 使用示例
 
-```yaml
-# tests/demo_api_test.yaml
-testcase:
-  name: demo_api_test
-  steps:
-    - id: get_user
-      path: /api/users/1
-      method: GET
-      assert:
-        - type: status_code
-          expected: 200
 ```
+# 告诉 Claude：
+"创建一个测试用户登录接口的测试用例"
 
-### 单元测试示例
-
-```yaml
-# tests/unit/demo_service_test.yaml
-unittest:
-  name: demo_service_test
-  env_type: venv  # 可选: venv(默认) | conda | uv
-  target:
-    module: src.service.demo_service  # 被测模块路径
-    class: DemoService                # 可选：类名
-    function: get_user                # 可选：函数名
-  cases:
-    - id: test_get_user
-      description: 测试获取用户
-      inputs:
-        args: [1]
-      assert:
-        - type: equals
-          expected: "expected_value"
-```
-
-**生成的测试脚本**：
-
-```python
-# 运行方式: source .venv/bin/activate && pytest test_cases/ -v
-
-import pytest
-from unittest.mock import patch, MagicMock, call
-import allure
-import yaml
-
-from src.service.demo_service import DemoService  # ← 根据 target 生成
-```
-
-### 运行测试
-
-```bash
-# venv
-source .venv/bin/activate && pytest test_cases/ -v
-
-# conda
-conda activate <env_name> && pytest test_cases/ -v
-
-# uv
-uv run pytest test_cases/ -v
+# Claude 会自动生成 YAML 文件和 pytest 脚本
 ```
 
 ---
 
-## 在现有项目中使用 MCP
+## 📊 测试报告
 
-### 完整流程
-
-假设你有一个现有项目 `my-project`，结构如下：
-
-```
-my-project/
-├── src/
-│   └── service/
-│       └── user_service.py   # 你想测试的代码
-├── tests/                    # 测试目录（需要新建）
-├── test_cases/              # 生成的测试脚本（自动创建）
-└── pyproject.toml           # 项目配置
-```
-
-#### 步骤 1：安装 MCP 服务器
+### Allure 报告
 
 ```bash
-# 方式一：从 GitHub 安装
-pipx install git+https://github.com/你的用户名/api-auto-test.git
+# 生成报告
+pytest tests/ --alluredir=report/allure
 
-# 方式二：发布到 PyPI 后
-pipx install api-auto-test
+# 本地预览
+allure serve report/allure
 
-# 注册到 Claude Code
-api-auto-test-mcp install
+# 生成 HTML
+allure generate report/allure -o report/html
 ```
 
-**重启 Claude Code** 使 MCP 生效。
-
-#### 步骤 2：在 Claude Code 中使用 MCP 工具
-
-在 Claude Code 中，你可以使用以下 MCP 工具：
-
-| 工具 | 用途 |
-|------|------|
-| `write_unittest` | 创建单元测试 |
-| `write_testcase` | 创建集成测试（API） |
-| `list_testcases` | 列出现有测试 |
-| `read_testcase` | 查看测试内容 |
-| `regenerate_py` | 重新生成测试脚本 |
-| `delete_testcase` | 删除测试 |
-
-#### 步骤 3：创建单元测试示例
-
-在 Claude Code 中调用 MCP 工具：
-
-```python
-# 告诉 Claude：
-"创建一个单元测试，测试 src/service/user_service.py 中的 UserService.get_user 方法"
-```
-
-Claude 会使用 `write_unittest` 工具，生成类似这样的 YAML：
+### 通知配置
 
 ```yaml
-# tests/unit/user_service_test.yaml
-unittest:
-  name: user_service_test
-  env_type: venv
-  target:
-    module: src.service.user_service
-    class: UserService
-    function: get_user
-  cases:
-    - id: test_get_user_normal
-      description: 正常获取用户
-      inputs:
-        args: [1]
-      assert:
-        - type: equals
-          expected: "expected_value"
+notification:
+  dingtalk:
+    webhook: "https://oapi.dingtalk.com/robot/send?access_token=xxx"
+    secret: "SECxxx"              # 钉钉加签密钥
+  feishu:
+    webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+  wechat:
+    webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx"
 ```
 
-**自动生成**的测试脚本：
+---
 
-```python
-# test_cases/unit/test_user_service_test.py
-# 运行方式: source .venv/bin/activate && pytest test_cases/ -v
+## 📖 最佳实践
 
-import pytest
-from unittest.mock import patch, MagicMock, call
-import allure
-import yaml
+### 1. 项目组织
 
-from src.service.user_service import UserService
-
-
-class TestUserService:
-    @allure.story("user_service_test")
-    def test_get_user_normal(self):
-        """正常获取用户"""
-        # 执行
-        instance = UserService()
-        result = instance.get_user(1)
-
-        # 断言
-        assert result == "expected_value"
+```
+tests/
+├── api/                      # API 接口测试
+│   ├── user/
+│   │   ├── test_user_login.yaml
+│   │   ├── test_user_register.yaml
+│   │   └── test_user_profile.yaml
+│   └── order/
+│       ├── test_order_create.yaml
+│       └── test_order_cancel.yaml
+├── unit/                     # 单元测试
+│   ├── test_user_service.yaml
+│   └── test_order_service.yaml
+└── integration/              # 集成测试
+    └── test_business_flow.yaml
 ```
 
-#### 步骤 4：执行测试
+### 2. 环境管理
 
 ```bash
-# 方式一：在终端手动执行
-cd my-project
-source .venv/bin/activate
-pytest test_cases/ -v
+# 测试环境
+pytest tests/ -v --env=test
 
-# 方式二：让 MCP 执行（如果 MCP 有 run_test 工具）
-# 或告诉 Claude："运行这个测试"
+# 预发环境
+pytest tests/ -v --env=pre
+
+# 生产环境
+pytest tests/ -v --env=online
 ```
 
-### 目录结构变化
-
-使用 MCP 后，你的项目会变成：
-
-```
-my-project/
-├── src/
-│   └── service/
-│       └── user_service.py
-├── tests/                          # MCP 工具读取的位置
-│   └── unit/
-│       └── user_service_test.yaml  # 你创建的测试定义
-├── test_cases/                     # 自动生成的测试脚本
-│   └── unit/
-│       └── test_user_service_test.py
-├── pyproject.toml
-└── .venv/                          # 虚拟环境
-```
-
-### 集成测试 vs 单元测试
-
-| 类型 | 用途 | YAML 根节点 |
-|------|------|-------------|
-| **集成测试** | 测试 API 接口 | `testcase` |
-| **单元测试** | 测试单个函数/类 | `unittest` |
-
-**集成测试示例**：
+### 3. 持续集成
 
 ```yaml
-# tests/api/user_api_test.yaml
-testcase:
-  name: user_api_test
-  steps:
-    - id: get_user
-      path: /api/users/1
-      method: GET
-      assert:
-        - type: status_code
-          expected: 200
+# .github/workflows/test.yml
+name: API Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      - name: Run tests
+        run: |
+          pytest tests/ --alluredir=report/allure
+      - name: Upload report
+        uses: actions/upload-artifact@v3
+        with:
+          name: allure-report
+          path: report/allure
 ```
 
-**生成的脚本**：
+---
 
-```python
-# test_cases/api/test_user_api_test.py
-# 运行方式: source .venv/bin/activate && pytest test_cases/ -v
+## 🤝 贡献指南
 
-from atf.core.request_handler import RequestHandler
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
+3. 提交更改 (`git commit -m 'feat: add amazing feature'`)
+4. 推送到分支 (`git push origin feature/amazing-feature`)
+5. 开启 Pull Request
 
-class TestUserApiTest:
-    def test_user_api_test(self):
-        response = RequestHandler.send_request(
-            method="GET",
-            url=project_config["host"] + "/api/users/1",
-            headers=None,
-            data=None,
-            params=None,
-            files=None
-        )
-        assert response.status_code == 200
-```
+---
 
-### 常见问题
+## 📄 许可证
 
-**Q: 测试脚本生成在哪里？**
-A: 默认生成到 `test_cases/` 目录，与 `tests/` 平行。
+本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
 
-**Q: 怎么运行测试？**
-A: 在项目根目录执行 `pytest test_cases/ -v`
+---
 
-**Q: MCP 能帮我运行测试吗？**
-A: 目前 MCP 负责创建测试脚本，运行测试需要在终端手动执行。未来可以添加 `run_test` 工具。
+## 📞 联系方式
 
-**Q: 需要把 `api-auto-test` 作为依赖吗？**
-A: 是的，用户项目需要安装 `api-auto-test` 包，才能导入 atf 框架。
+- **作者**: Galaxy Xie
+- **GitHub**: [api-auto-test](https://github.com/galaxyxieyu/api-auto-test)
+- **问题反馈**: [Issues](https://github.com/galaxyxieyu/api-auto-test/issues)
+
+---
+
+<div align="center">
+
+⭐ 如果本项目对你有帮助，欢迎 Star 支持！
+
+</div>
