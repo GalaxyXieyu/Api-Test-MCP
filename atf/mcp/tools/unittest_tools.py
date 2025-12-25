@@ -25,7 +25,43 @@ def register_unittest_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="write_unittest",
         title="写入单元测试用例并生成 pytest 脚本",
-        description="根据输入的单元测试结构写入 YAML 文件，并生成对应的 pytest 单元测试脚本。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
+        description="根据输入的单元测试结构写入 YAML 文件，并生成对应的 pytest 单元测试脚本。\n\n"
+        "**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。\n\n"
+        "**unittest 格式说明**:\n"
+        "```json\n"
+        "{\n"
+        "  \"name\": \"UserService 测试\",\n"
+        "  \"target\": {\n"
+        "    \"module\": \"app.services.user_service\",\n"
+        "    \"class\": \"UserService\",  // 可选，测试类\n"
+        "    \"function\": \"get_user\"   // 可选，测试函数\n"
+        "  },\n"
+        "  \"fixtures\": {\n"
+        "    \"setup\": [{\"type\": \"patch\", \"target\": \"app.services.user_service.UserRepository\", \"return_value\": {\"id\": 1, \"name\": \"test\"}}],\n"
+        "    \"teardown\": []\n"
+        "  },\n"
+        "  \"cases\": [\n"
+        "    {\n"
+        "      \"id\": \"test_get_user_success\",\n"
+        "      \"description\": \"测试获取用户成功\",\n"
+        "      \"inputs\": {\"args\": [1], \"kwargs\": {}},\n"
+        "      \"assert\": [\n"
+        "        {\"type\": \"equals\", \"field\": \"result.id\", \"expected\": 1},\n"
+        "        {\"type\": \"equals\", \"field\": \"result.name\", \"expected\": \"test\"}\n"
+        "      ]\n"
+        "    }\n"
+        "  ]\n"
+        "}\n"
+        "```\n\n"
+        "**assert.type 支持的断言类型**:\n"
+        "- `equals`: 精确匹配\n"
+        "- `not_equals`: 不匹配\n"
+        "- `contains`: 包含\n"
+        "- `raises`: 期望抛出异常，exception 字段指定异常类型\n"
+        "- `is_none`: 结果为 None\n"
+        "- `is_not_none`: 结果不为 None\n"
+        "- `called_once`: mock 被调用一次\n"
+        "- `called_with`: mock 被特定参数调用",
     )
     def write_unittest(
         yaml_path: str,

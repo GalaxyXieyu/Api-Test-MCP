@@ -156,7 +156,37 @@ def register_testcase_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="write_testcase",
         title="写入测试用例并生成 pytest 脚本",
-        description="根据输入的测试用例结构写入 YAML 文件，并生成对应的 pytest 用例脚本。\n\n**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。",
+        description="根据输入的测试用例结构写入 YAML 文件，并生成对应的 pytest 用例脚本。\n\n"
+        "**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。\n\n"
+        "**testcase 格式说明**:\n"
+        "```json\n"
+        "{\n"
+        "  \"name\": \"测试用例名称\",\n"
+        "  \"description\": \"可选描述\",\n"
+        "  \"steps\": [\n"
+        "    {\n"
+        "      \"id\": \"步骤唯一标识\",\n"
+        "      \"method\": \"GET|POST|PUT|DELETE|PATCH\",\n"
+        "      \"path\": \"/api/users\",\n"
+        "      \"data\": {\"key\": \"value\"},  // POST/PUT 请求体\n"
+        "      \"headers\": {\"Authorization\": \"Bearer token\"},  // 可选请求头\n"
+        "      \"assert\": [\n"
+        "        {\"type\": \"status_code\", \"expected\": 200},\n"
+        "        {\"type\": \"equals\", \"field\": \"data.id\", \"expected\": 1},\n"
+        "        {\"type\": \"contains\", \"field\": \"data.name\", \"expected\": \"John\"},\n"
+        "        {\"type\": \"length\", \"field\": \"data\", \"expected\": 10}\n"
+        "      ]\n"
+        "    }\n"
+        "  ]\n"
+        "}\n"
+        "```\n\n"
+        "**assert.type 支持的断言类型**:\n"
+        "- `status_code`: 状态码断言，expected 为数字如 200, 201, 401, 404\n"
+        "- `equals`: 精确匹配，field 为响应字段路径，expected 为期望值\n"
+        "- `not_equals`: 不匹配，field 为响应字段路径，expected 为不期望的值\n"
+        "- `contains`: 包含，field 为响应字段路径，expected 为期望包含的值\n"
+        "- `length`: 长度断言，field 为响应字段路径，expected 为期望长度\n\n"
+        "**变量引用**: 支持使用 `{{上一个步骤id.response.字段路径}}` 引用前序响应数据",
     )
     def write_testcase(
         yaml_path: str,
