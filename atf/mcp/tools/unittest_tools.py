@@ -12,6 +12,7 @@ from atf.mcp.tools.testcase_tools import format_validation_error
 from atf.unit_case_generator import UnitCaseGenerator
 from atf.mcp.utils import (
     build_unittest_yaml,
+    contains_chinese,
     expected_py_path,
     parse_unittest_input,
     resolve_yaml_path,
@@ -26,11 +27,15 @@ def register_unittest_tools(mcp: FastMCP) -> None:
         name="write_unittest",
         title="写入单元测试用例并生成 pytest 脚本",
         description="根据输入的单元测试结构写入 YAML 文件，并生成对应的 pytest 单元测试脚本。\n\n"
+        "**命名规范**:\n"
+        "- `name` 字段**不能使用中文**，必须使用英文命名\n"
+        "- `description` 字段可以使用中文描述\n\n"
         "**重要**: 必须传递 `workspace` 参数指定项目根目录，否则默认使用 api-auto-test 仓库。\n\n"
         "**unittest 格式说明**:\n"
         "```json\n"
         "{\n"
-        "  \"name\": \"UserService 测试\",\n"
+        "  \"name\": \"user_service_test\",  // 必须使用英文，不能包含中文\n"
+        "  \"description\": \"用户服务单元测试\",  // 描述可以使用中文\n"
         "  \"target\": {\n"
         "    \"module\": \"app.services.user_service\",\n"
         "    \"class\": \"UserService\",  // 可选，测试类\n"
@@ -42,8 +47,8 @@ def register_unittest_tools(mcp: FastMCP) -> None:
         "  },\n"
         "  \"cases\": [\n"
         "    {\n"
-        "      \"id\": \"test_get_user_success\",\n"
-        "      \"description\": \"测试获取用户成功\",\n"
+        "      \"id\": \"test_get_user_success\",  // 必须使用英文，不能包含中文\n"
+        "      \"description\": \"测试获取用户成功\",  // 描述可以使用中文\n"
         "      \"inputs\": {\"args\": [1], \"kwargs\": {}},\n"
         "      \"assert\": [\n"
         "        {\"type\": \"equals\", \"field\": \"result.id\", \"expected\": 1},\n"
@@ -71,6 +76,14 @@ def register_unittest_tools(mcp: FastMCP) -> None:
     ) -> GenerateResponse:
         try:
             unittest_model = parse_unittest_input(unittest)
+
+            # 验证 name 字段不能包含中文
+            if contains_chinese(unittest_model.name):
+                raise ValueError(
+                    f"单元测试 name 字段不能包含中文字符: '{unittest_model.name}'\n"
+                    "请使用英文命名，例如: user_service_test, calculate_total_test"
+                )
+
             yaml_full_path, yaml_relative_path, repo_root = resolve_yaml_path(yaml_path, workspace)
 
             # 检查路径是否存在

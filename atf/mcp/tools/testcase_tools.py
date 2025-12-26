@@ -23,6 +23,7 @@ from atf.mcp.models import (
 from atf.mcp.utils import (
     build_testcase_summary,
     build_testcase_yaml,
+    contains_chinese,
     format_validation_error,
     load_yaml_file,
     parse_testcase_input,
@@ -187,30 +188,31 @@ def register_testcase_tools(mcp: FastMCP) -> None:
         name="write_testcase",
         title="写入/生成测试用例",
         description="写入 YAML 测试用例并生成 pytest 脚本，或仅重新生成已存在 YAML 对应的 pytest 脚本。\n\n"
+        "**命名规范**:\n"
+        "- `name` 字段**不能使用中文**，必须使用英文命名\n"
+        "- `description` 字段可以使用中文描述\n\n"
         "**两种模式**:\n"
         "1. **写入模式**（传入 testcase）: 创建/更新 YAML 文件并生成 pytest 脚本\n"
         "2. **重新生成模式**（不传 testcase）: 仅基于已存在的 YAML 重新生成 pytest 脚本\n\n"
-        "**⚠️ 重要提醒**:\n"
+        "**重要提醒**:\n"
         "- 必须传递 `workspace` 参数指定项目根目录\n"
         "- **强烈建议**传入 `host` 参数指定 API 服务地址，否则需要配置全局变量\n\n"
         "**testcase 完整格式**:\n"
         "```json\n"
         "{\n"
-        "  \"name\": \"测试用例名称\",\n"
-        "  \"description\": \"可选描述\",\n"
-        "  \"host\": \"http://localhost:8000\",  // ✅ 强烈建议填写，否则需要全局配置\n"
+        "  \"name\": \"test_user_login\",  // 必须使用英文，不能包含中文\n"
+        "  \"description\": \"用户登录测试\",  // 描述可以使用中文\n"
+        "  \"host\": \"http://localhost:8000\",\n"
         "  \"steps\": [\n"
         "    {\n"
-        "      \"id\": \"步骤唯一标识\",\n"
-        "      \"method\": \"GET|POST|PUT|DELETE|PATCH\",\n"
-        "      \"path\": \"/api/users\",\n"
-        "      \"data\": {\"key\": \"value\"},  // POST/PUT 请求体\n"
-        "      \"headers\": {\"Authorization\": \"Bearer token\"},  // 可选请求头\n"
+        "      \"id\": \"step1\",\n"
+        "      \"method\": \"POST\",\n"
+        "      \"path\": \"/api/users/login\",\n"
+        "      \"data\": {\"username\": \"testuser\", \"password\": \"testpass\"},\n"
+        "      \"headers\": {\"Content-Type\": \"application/json\"},\n"
         "      \"assert\": [\n"
         "        {\"type\": \"status_code\", \"expected\": 200},\n"
-        "        {\"type\": \"equals\", \"field\": \"data.id\", \"expected\": 1},\n"
-        "        {\"type\": \"contains\", \"field\": \"data.name\", \"expected\": \"John\"},\n"
-        "        {\"type\": \"length\", \"field\": \"data\", \"expected\": 10}\n"
+        "        {\"type\": \"equals\", \"field\": \"data.code\", \"expected\": 0}\n"
         "      ]\n"
         "    }\n"
         "  ]\n"
@@ -235,16 +237,20 @@ def register_testcase_tools(mcp: FastMCP) -> None:
         "# 写入 + 生成\n"
         "{\n"
         "  \"yaml_path\": \"tests/cases/auth_test.yaml\",\n"
-        "  \"testcase\": {...},\n"
+        "  \"testcase\": {\n"
+        "    \"name\": \"test_user_login\",\n"
+        "    \"description\": \"用户登录测试\",\n"
+        "    \"steps\": [...]\n"
+        "  },\n"
         "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
         "}\n\n"
-        "# 仅重新生成 py（当 YAML 已存在时）\n"
+        "# 重新生成 py（当 YAML 已存在时）\n"
         "{\n"
         "  \"yaml_path\": \"tests/cases/auth_test.yaml\",\n"
         "  \"workspace\": \"/Volumes/DATABASE/code/glam-cart/backend\"\n"
         "}\n"
         "```\n\n"
-        "💡 **提示**: 如果测试用例需要访问特定的 API 服务器，请务必在 `host` 字段中填写完整地址（如 `http://localhost:8000`）。如果不指定 `host`，测试将依赖项目的全局环境配置。",
+        "**提示**: 如果测试用例需要访问特定的 API 服务器，请务必在 `host` 字段中填写完整地址（如 `http://localhost:8000`）。如果不指定 `host`，测试将依赖项目的全局环境配置。",
     )
     def write_testcase(
         yaml_path: str,
@@ -262,6 +268,13 @@ def register_testcase_tools(mcp: FastMCP) -> None:
             if is_write_mode:
                 # ========== 写入模式 ==========
                 testcase_model = parse_testcase_input(testcase)
+
+                # 验证 name 字段不能包含中文
+                if contains_chinese(testcase_model.name):
+                    raise ValueError(
+                        f"测试用例 name 字段不能包含中文字符: '{testcase_model.name}'\n"
+                        "请使用英文命名，例如: test_user_login, get_product_list"
+                    )
             else:
                 # ========== 重新生成模式 ==========
                 if not yaml_full_path.exists():

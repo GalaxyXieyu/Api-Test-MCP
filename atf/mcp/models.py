@@ -5,9 +5,17 @@ Pydantic Models for MCP Server
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
+
+def contains_chinese(text: str) -> bool:
+    """检测字符串是否包含中文字符"""
+    if not text:
+        return False
+    return bool(re.search(r'[\u4e00-\u9fff]', str(text)))
 
 
 class AssertionModel(BaseModel):
@@ -191,6 +199,11 @@ class UnitTestModel(BaseModel):
     def validate_required(self) -> "UnitTestModel":
         if not self.name:
             raise ValueError("unittest.name 不能为空")
+        if contains_chinese(self.name):
+            raise ValueError(
+                f"unittest.name 不能包含中文字符: '{self.name}'\n"
+                "请使用英文命名，例如: user_service_test, calculate_total_test"
+            )
         if not self.cases:
             raise ValueError("unittest.cases 不能为空")
         return self
@@ -214,6 +227,11 @@ class TestcaseModel(BaseModel):
     def validate_required(self) -> "TestcaseModel":
         if not self.name:
             raise ValueError("testcase.name 不能为空")
+        if contains_chinese(self.name):
+            raise ValueError(
+                f"testcase.name 不能包含中文字符: '{self.name}'\n"
+                "请使用英文命名，例如: test_user_login, get_product_list"
+            )
         if not self.steps:
             raise ValueError("testcase.steps 不能为空")
         return self

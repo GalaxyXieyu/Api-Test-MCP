@@ -277,6 +277,13 @@ def truncate_text(text: str, max_length: int = MAX_ERROR_LENGTH) -> str:
     return text[-max_length:] if len(text) > max_length else text
 
 
+def contains_chinese(text: str) -> bool:
+    """检测字符串是否包含中文字符"""
+    if not text:
+        return False
+    return bool(re.search(r'[\u4e00-\u9fff]', str(text)))
+
+
 __all__ = [
     "REPO_ROOT",
     "TESTS_ROOT",
@@ -300,4 +307,5 @@ __all__ = [
     "format_validation_error",
     "detect_testcase_type",
     "truncate_text",
+    "contains_chinese",
 ]
