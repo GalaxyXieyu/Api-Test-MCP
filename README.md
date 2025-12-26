@@ -1,82 +1,82 @@
-# API Auto Test Framework
-
 <div align="center">
+  <img src="docs/images/mcp-architecture.png" alt="MCP Architecture" width="100%"/>
+</div>
+
+# API Auto Test Framework
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![pytest](https://img.shields.io/badge/pytest-8.0%2B-yellow)
 
-**YAML 声明式 API 测试框架，专为 AI 编程助手优化**
+**YAML Declarative API Testing Framework, Optimized for AI Coding Assistants**
 
-[快速开始](#快速开始) | [MCP 集成](#mcp-server-集成) | [YAML 规范](#yaml-用例规范) | [单元测试](#单元测试)
-
-</div>
+[Quick Start](#quick-start) | [MCP Integration](#mcp-server-integration) | [YAML Spec](#yaml-test-case-spec) | [Unit Testing](#unit-testing)
 
 ---
 
-## 为什么需要这个框架
+## Why This Framework?
 
-让 AI 写接口测试代码，你可能遇到过这些问题：
+When asking AI to write API tests, you might encounter these issues:
 
-**场景 1：重复劳动**
+**Scenario 1: Repetitive Work**
 
-每次让 AI 生成测试，都要重新描述项目结构、认证方式、断言风格。测试 10 个接口，同样的 fixture 和 setup 代码生成了 10 遍。
+Every time you ask AI to generate tests, you need to re-describe the project structure, authentication method, and assertion style. For 10 API tests, the same fixture and setup code gets generated 10 times.
 
-**场景 2：Token 黑洞**
+**Scenario 2: Token Black Hole**
 
-一个简单的登录接口测试，AI 生成了 200 行代码。你发现断言写错了，让它改，又生成 200 行。改 3 次，消耗 2000+ Token，最后还是你自己手动改的。
+A simple login API test generates 200 lines of code. You find an assertion is wrong, ask AI to fix it, and it generates another 200 lines. After 3 revisions, you've consumed 2000+ Tokens, and you still end up fixing it manually.
 
-**场景 3：调试死循环**
+**Scenario 3: Debugging Dead Loop**
 
-AI 生成的测试跑不通，报错信息贴给它，它改了一版还是不对。来回 5 轮对话，问题还在，Token 已经烧了 5000+。
+AI-generated tests fail to run. You paste the error message, AI fixes it but still wrong. After 5 rounds of conversation, the problem persists, and you've burned 5000+ Tokens.
 
-**这个框架的解决方案：**
+**This Framework's Solution:**
 
 ```
-传统方式：自然语言描述 -> AI 生成完整代码 -> 运行报错 -> 贴报错 -> AI 重新生成 -> 循环...
-本框架：  自然语言描述 -> AI 生成 YAML    -> 框架执行 -> 直接定位问题 -> 改 YAML 一行
+Traditional: Natural Language -> AI Generates Full Code -> Run Error -> Paste Error -> AI Regenerates -> Loop...
+This Framework: Natural Language -> AI Generates YAML -> Framework Executes -> Locate Issue -> Fix 1 Line YAML
 ```
 
-| 对比项 | 传统 AI 生成 | 本框架 |
-|--------|-------------|--------|
-| 测试 1 个接口 | ~200 行代码 | ~20 行 YAML |
-| 修改断言逻辑 | 重新生成全部代码 | 改 1-2 行 YAML |
-| 10 个接口测试 | 重复 setup 10 次 | 共享配置，0 重复 |
-| 调试一个问题 | 平均 3-5 轮对话 | 通常 1 轮 |
+| Metric | Traditional AI | This Framework |
+|--------|---------------|----------------|
+| Test 1 API | ~200 lines code | ~20 lines YAML |
+| Modify Assertion | Regenerate all code | Fix 1-2 lines YAML |
+| 10 API Tests | Repeat setup 10x | Shared config, 0 repeat |
+| Debug Issue | 3-5 rounds avg | Usually 1 round |
 
 ---
 
-## 核心特性
+## Key Features
 
-| 特性 | 说明 |
-|------|------|
-| **YAML 声明式用例** | 测试逻辑与执行代码分离，AI 只需生成结构化数据 |
-| **MCP Server** | 与 Claude/Cursor 等 AI 编辑器无缝集成 |
-| **接口 Workflow 编排** | 单文件支持多步骤接口调用，步骤间数据传递与断言 |
-| **变量解析引擎** | 支持步骤间数据传递、全局变量、动态函数调用 |
-| **自动认证管理** | Token 获取和刷新由框架处理 |
-| **数据工厂** | 无需 Java 依赖，内置 Mock 数据生成 |
-| **多格式测试报告** | Allure（离线/在线）、pytest-html（独立 HTML，美化样式） |
-| **多渠道通知** | 钉钉、飞书、企业微信 |
-| **单元测试** | 支持 Python 代码单元测试，Mock 依赖自动注入 |
+| Feature | Description |
+|---------|-------------|
+| **YAML Declarative Tests** | Test logic separated from execution code, AI generates structured data only |
+| **MCP Server** | Seamless integration with Claude/Cursor and other AI editors |
+| **API Workflow Orchestration** | Multi-step API calls in single file, with data passing and assertions between steps |
+| **Variable Resolution Engine** | Support for cross-step data transfer, global variables, and dynamic function calls |
+| **Auto Authentication** | Token acquisition and refresh handled by framework |
+| **Data Factory** | Built-in mock data generation, no Java dependencies |
+| **Multi-format Reports** | Allure (offline/online), pytest-html (standalone HTML, styled) |
+| **Multi-channel Notifications** | DingTalk, Feishu, WeCom |
+| **Unit Testing** | Python code unit testing with automatic mock dependency injection |
 
 ---
 
-## 快速开始
+## Quick Start
 
-### 安装
+### Installation
 
 ```bash
-# 1. 安装 uv（如果没有）
+# 1. Install uv (if not installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 2. 安装 MCP 服务器
+# 2. Install MCP server
 uv tool install git+https://github.com/GalaxyXieyu/Api-Test-MCP.git
 ```
 
-### 配置编辑器
+### Configure Editor
 
-将以下配置添加到编辑器的 MCP 设置：
+Add the following to your editor's MCP settings:
 
 ```json
 {
@@ -88,52 +88,29 @@ uv tool install git+https://github.com/GalaxyXieyu/Api-Test-MCP.git
 }
 ```
 
-| 编辑器 | 配置位置 |
-|--------|---------|
+| Editor | Config Location |
+|--------|-----------------|
 | Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-| Cursor | 设置 -> MCP Servers |
+| Cursor | Settings -> MCP Servers |
 | VSCode + Continue | `.vscode/mcp.json` |
 
-### 可用工具
-
-| 工具 | 说明 |
-|------|------|
-| `list_testcases` | 列出测试用例 |
-| `get_testcase` | 读取用例内容 |
-| `write_testcase` | 创建/更新用例并生成 pytest 脚本 |
-| `write_unittest` | 创建单元测试 |
-| `delete_testcase` | 删除用例 |
-| `run_tests` | 执行测试 |
-| `get_test_results` | 获取测试执行历史 |
-
-### 使用示例
-
-对 AI 说：
-
-```
-帮我创建一个测试 /api/users 接口的用例，验证返回的用户列表长度大于 0
-```
-
-AI 会调用 `write_testcase` 生成 YAML 和对应的 pytest 脚本。
-
----
-### 源码测试开发
+### Local Development
 
 ```bash
-# 推荐使用 uv
+# Recommended with uv
 uv pip install -r requirements.txt
 
-# 或 pip
+# Or with pip
 pip install -r requirements.txt
 ```
 
-### 创建测试用例
+### Create Test Case
 
 ```yaml
 # tests/cases/user_login.yaml
 testcase:
   name: user_login
-  description: 用户登录接口测试
+  description: User login API test
   host: http://localhost:8000
   steps:
     - id: login
@@ -150,63 +127,102 @@ testcase:
           expected: 0
 ```
 
-### 生成并运行
+### Generate and Run
 
 ```bash
-# 生成 pytest 脚本
+# Generate pytest scripts
 python -m atf.case_generator
 
-# 运行测试
+# Run tests
 pytest tests/scripts/ -v
 
-# 生成 Allure 报告
+# Generate Allure report
 pytest tests/scripts/ --alluredir=tests/allure-results
 allure serve tests/allure-results
 
-# 生成 pytest-html 报告
+# Generate pytest-html report
 pytest tests/scripts/ --html=report.html
 ```
 
 ---
 
-## MCP Server 集成
+## MCP Server Integration
 
-通过 MCP，AI 编辑器可以直接调用框架工具生成和执行测试。
+Through MCP, AI editors can directly call framework tools to generate and execute tests.
 
+### Efficiency Comparison
 
+| Metric | Without MCP | With MCP | Improvement |
+|--------|-------------|----------|-------------|
+| Total Cost | $0.0214 | $0.0099 | **-54%** |
+| API Latency | 11 sec | 4 sec | **-64%** |
+| Output Tokens | 585 | 238 | **-59%** |
+| Cache Read | 42.0k | 21.0k | **-50%** |
 
-## 项目结构
+**Test Scenario**: Same API test generation task (pure consultation/analysis conversation)
+
+**Core Advantages**:
+- **54% cost reduction**: MCP directly calls tools, avoiding lengthy code generation context
+- **64% faster API response**: Tool calls are more efficient than natural language interaction
+- **59% less token consumption**: Only necessary parameters needed, no need to repeat project structure
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_testcases` | List test cases |
+| `get_testcase` | Read test case content |
+| `write_testcase` | Create/update test case and generate pytest script |
+| `write_unittest` | Create unit test |
+| `delete_testcase` | Delete test case |
+| `run_tests` | Execute tests |
+| `get_test_results` | Get test execution history |
+| `health_check` | Service health check |
+
+### Usage Example
+
+Tell AI:
+
+```
+Create a test for /api/users interface, verify returned user list length > 0
+```
+
+AI will call `write_testcase` to generate YAML and corresponding pytest script.
+
+---
+
+## Project Structure
 
 ```
 api-auto-test/
-├── atf/                    # 框架核心
-│   ├── core/               # 请求、断言、变量解析等核心模块
-│   ├── mcp/                # MCP Server 实现
-│   └── handlers/           # 通知、报告等处理器
+├── atf/                    # Framework core
+│   ├── core/               # Request, assertion, variable resolution modules
+│   ├── mcp/                # MCP Server implementation
+│   └── handlers/           # Notification, report handlers
 ├── tests/
-│   ├── cases/              # YAML 测试用例
-│   └── scripts/            # 生成的 pytest 脚本
-├── config.yaml             # 项目配置（环境、数据库、通知）
+│   ├── cases/              # YAML test cases
+│   └── scripts/            # Generated pytest scripts
+├── config.yaml             # Project config (environment, database, notifications)
 └── pyproject.toml
 ```
 
 ---
 
-## YAML 用例规范
+## YAML Test Case Spec
 
-### 基本结构
+### Basic Structure
 
 ```yaml
 testcase:
-  name: test_name              # 用例名称，用于生成文件名
-  description: 描述            # 可选
-  host: http://localhost:8000  # API 地址，也可在 config.yaml 全局配置
+  name: test_name              # Case name, used for filename
+  description: Description     # Optional
+  host: http://localhost:8000  # API host, can also be configured globally in config.yaml
   steps:
-    - id: step1                # 步骤 ID，用于后续引用
+    - id: step1                # Step ID, used for later reference
       path: /api/endpoint
       method: POST
       headers:
-        Authorization: "Bearer {{ login.data.token }}"  # 引用其他步骤的响应
+        Authorization: "Bearer {{ login.data.token }}"  # Reference response from other step
       data:
         key: value
       assert:
@@ -217,31 +233,31 @@ testcase:
           expected: 1
 ```
 
-### 断言类型
+### Assertion Types
 
-| 类型 | 说明 | 示例 |
-|------|------|------|
-| `status_code` | HTTP 状态码 | `expected: 200` |
-| `equals` | 精确匹配 | `field: data.id, expected: 1` |
-| `contains` | 包含 | `field: data.name, expected: "test"` |
-| `length` | 数组/字符串长度 | `field: data.list, expected: 10` |
-| `regex` | 正则匹配 | `field: data.email, expected: "^\\w+@"` |
+| Type | Description | Example |
+|------|-------------|---------|
+| `status_code` | HTTP status code | `expected: 200` |
+| `equals` | Exact match | `field: data.id, expected: 1` |
+| `contains` | Contains | `field: data.name, expected: "test"` |
+| `length` | Array/string length | `field: data.list, expected: 10` |
+| `regex` | Regex match | `field: data.email, expected: "^\\w+@"` |
 
-### 变量引用
+### Variable Reference
 
 ```yaml
-# 引用其他步骤的响应数据
+# Reference response data from other steps
 token: "{{ login.data.token }}"
 
-# 引用全局配置
+# Reference global config
 host: "{{ merchant.host }}"
 
-# 调用内置函数
+# Call built-in functions
 timestamp: "{{ tools.get_timestamp() }}"
 uuid: "{{ tools.generate_uuid() }}"
 ```
 
-### 后置清理
+### Teardown
 
 ```yaml
 testcase:
@@ -261,15 +277,15 @@ testcase:
 
 ---
 
-## 单元测试
+## Unit Testing
 
-支持为 Python 代码编写单元测试，通过 MCP 工具自动生成测试用例。
+Support for writing unit tests for Python code, automatically generating test cases through MCP tools.
 
-### 单元测试 YAML 格式
+### Unit Test YAML Format
 
 ```yaml
 unittest:
-  name: UserService 测试
+  name: UserService Test
   target:
     module: app.services.user_service
     class: UserService
@@ -283,7 +299,7 @@ unittest:
           name: "test_user"
   cases:
     - id: test_get_user_success
-      description: 测试获取用户成功
+      description: Test get user success
       inputs:
         args: [1]
         kwargs: {}
@@ -296,22 +312,22 @@ unittest:
           expected: "test_user"
 ```
 
-### 断言类型
+### Assertion Types
 
-| 类型 | 说明 |
-|------|------|
-| `equals` | 精确匹配 |
-| `not_equals` | 不匹配 |
-| `contains` | 包含 |
-| `raises` | 期望抛出异常 |
-| `is_none` | 结果为 None |
-| `is_not_none` | 结果不为 None |
-| `called_once` | mock 被调用一次 |
-| `called_with` | mock 被特定参数调用 |
+| Type | Description |
+|------|-------------|
+| `equals` | Exact match |
+| `not_equals` | Not equal |
+| `contains` | Contains |
+| `raises` | Expect exception to be raised |
+| `is_none` | Result is None |
+| `is_not_none` | Result is not None |
+| `called_once` | Mock called once |
+| `called_with` | Mock called with specific arguments |
 
 ---
 
-## 配置文件
+## Configuration File
 
 ```yaml
 # config.yaml
@@ -338,13 +354,13 @@ notifications:
 
 ---
 
-## 许可证
+## License
 
 MIT License
 
 ---
 
-## 链接
+## Links
 
 - [GitHub](https://github.com/GalaxyXieyu/Api-Test-MCP)
-- [问题反馈](https://github.com/GalaxyXieyu/Api-Test-MCP/issues)
+- [Issue Report](https://github.com/GalaxyXieyu/Api-Test-MCP/issues)
