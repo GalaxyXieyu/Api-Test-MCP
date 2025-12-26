@@ -5,6 +5,7 @@ MCP Server Utilities
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Literal
 
