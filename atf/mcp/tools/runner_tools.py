@@ -45,6 +45,9 @@ def register_runner_tools(mcp: FastMCP) -> None:
         name="run_tests",
         title="执行测试用例",
         description="执行单个或批量 YAML 测试用例，支持集成测试 testcase 和单元测试 unittest。\n\n"
+        "【给 AI 助手的强制规则】\n"
+        "- 执行前应确保 YAML 已通过 `write_testcase` 生成/更新对应的 pytest 脚本（tests/scripts）。若脚本不存在，先调用 `write_testcase`，不要让用户手动补文件。\n"
+        "- 每次调用都必须显式传 `workspace`（项目根目录）。\n\n"
         "**执行模式（自动识别）**:\n"
         "- 传入 `yaml_path` → 执行单个测试用例\n"
         "- 传入 `root_path` → 批量执行目录下的所有测试用例\n\n"

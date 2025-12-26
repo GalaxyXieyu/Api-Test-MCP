@@ -70,9 +70,24 @@ AI 生成的测试跑不通，报错信息贴给它，它改了一版还是不�
 # 1. 安装 uv（如果没有）
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 2. 安装 MCP 服务器
+# 2. 安装 MCP 服务器（推荐：安装为 tool）
 uv tool install git+https://github.com/GalaxyXieyu/Api-Test-MCP.git
+
+# 验证
+api-auto-test-mcp --help
+
+# 管理工具
+uv tool list
+uv tool uninstall api-auto-test   # 以 `uv tool list` 展示的 tool 名称为准
 ```
+
+**无需安装，直接运行（uvx）：**
+
+```bash
+uvx --from git+https://github.com/GalaxyXieyu/Api-Test-MCP.git api-auto-test-mcp --help
+```
+
+**常见误用：** `uvx install ...` 是 **错误** 用法。`uvx` 会把后面的第一个词当成“工具名”，于是会去解析一个叫 `install` 的包，进而报 “install not found”。
 
 ### 配置编辑器
 

@@ -70,9 +70,24 @@ This Framework: Natural Language -> AI Generates YAML -> Framework Executes -> L
 # 1. Install uv (if not installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 2. Install MCP server
+# 2. Install MCP server (recommended: install as a tool)
 uv tool install git+https://github.com/GalaxyXieyu/Api-Test-MCP.git
+
+# Verify
+api-auto-test-mcp --help
+
+# Manage tools
+uv tool list
+uv tool uninstall api-auto-test   # use the tool name shown by `uv tool list`
 ```
+
+**Run without installing (uvx):**
+
+```bash
+uvx --from git+https://github.com/GalaxyXieyu/Api-Test-MCP.git api-auto-test-mcp --help
+```
+
+**Common mistake:** `uvx install ...` is **wrong**. `uvx` treats the first word after it as the tool name, so it will try to resolve a package literally named `install` and fail.
 
 ### Configure Editor
 
