@@ -205,6 +205,7 @@ class CaseGenerator:
 
 		f.write(f"# Auto-generated test module for {module_name}\n")
 		f.write(f"import os\n")
+		f.write(f"import re\n")
 		f.write(f"from atf.core.log_manager import log\n")
 		f.write(f"from atf.core.globals import Globals\n")
 		f.write(f"from atf.core.variable_resolver import VariableResolver\n")
@@ -477,6 +478,7 @@ class CaseGenerator:
 		with open(file_path, 'w', encoding='utf-8') as f:
 			f.write(f"# Auto-generated test module for {module_name}\n")
 			f.write(f"import os\n")
+			f.write(f"import re\n")
 			f.write(f"from atf.core.log_manager import log\n")
 			f.write(f"from atf.core.globals import Globals\n")
 			f.write(f"from atf.core.variable_resolver import VariableResolver\n")
