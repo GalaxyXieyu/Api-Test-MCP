@@ -40,6 +40,7 @@ _history_lock = threading.Lock()
 
 # api-auto-test 包的安装目录（用于获取依赖列表）
 _ATF_ROOT = Path(__file__).parent.parent.parent.parent
+_AUTO_INSTALL_DEPS = os.getenv("ATF_AUTO_INSTALL_DEPS", "1").lower() in {"1", "true", "yes"}
 
 
 def _get_report_path(repo_root: Path) -> Path:
@@ -196,13 +197,16 @@ def get_python_path(repo_root: Path) -> str:
             return str(venv_python)
         else:
             log.warning(f"项目 venv 缺少依赖: {missing}，正在自动安装...")
-            # 自动安装缺失的依赖到项目 venv
-            if _install_missing_dependencies(str(venv_python), missing):
-                # 再次验证
-                has_deps, _ = _check_python_has_dependencies(str(venv_python), required_modules)
-                if has_deps:
-                    log.info(f"✅ 依赖安装成功，使用项目 venv: {venv_python}")
-                    return str(venv_python)
+            if _AUTO_INSTALL_DEPS:
+                # 自动安装缺失的依赖到项目 venv
+                if _install_missing_dependencies(str(venv_python), missing):
+                    # 再次验证
+                    has_deps, _ = _check_python_has_dependencies(str(venv_python), required_modules)
+                    if has_deps:
+                        log.info(f"✅ 依赖安装成功，使用项目 venv: {venv_python}")
+                        return str(venv_python)
+            else:
+                log.warning("已禁用自动依赖安装（ATF_AUTO_INSTALL_DEPS=0），将继续使用当前 venv")
 
             # 如果安装失败，继续使用项目 venv（至少其他项目依赖可用）
             log.warning(f"⚠️ 部分依赖安装失败，继续使用项目 venv: {venv_python}")
@@ -244,6 +248,7 @@ def run_pytest(pytest_path: str, repo_root: Path, python_path: str | None = None
         "assertions": [],
         "error_message": None,
         "traceback": None,
+        "report_path": None,
     }
 
     try:
@@ -408,6 +413,7 @@ def execute_single_test(yaml_path: str, repo_root: Path, python_path: str | None
             ],
             error_message=result_data.get("error_message"),
             traceback=result_data.get("traceback"),
+            report_path=result_data.get("report_path"),
         )
     except Exception as exc:
         log.error(f"执行单个测试失败: {exc}")
