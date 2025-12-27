@@ -3,8 +3,9 @@ Testcase CRUD Tools
 测试用例读写工具
 """
 
+import time
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import ValidationError
@@ -23,9 +24,12 @@ from atf.mcp.models import (
 from atf.mcp.utils import (
     build_testcase_summary,
     build_testcase_yaml,
+    build_error_payload,
     contains_chinese,
     format_validation_error,
     load_yaml_file,
+    log_tool_call,
+    new_request_id,
     parse_testcase_input,
     resolve_tests_root,
     resolve_yaml_path,
@@ -64,6 +68,8 @@ def register_testcase_tools(mcp: FastMCP) -> None:
         test_type: Literal["all", "integration", "unit"] = "all",
         workspace: str | None = None,
     ) -> ListTestcasesResponse:
+        request_id = new_request_id()
+        start_time = time.perf_counter()
         try:
             base_dir, repo_root = resolve_tests_root(root_path, workspace)
             all_yaml_files = list(base_dir.rglob("*.yaml"))
@@ -89,15 +95,49 @@ def register_testcase_tools(mcp: FastMCP) -> None:
                         continue
                 testcases = sorted(testcases)
 
-            return ListTestcasesResponse(status="ok", testcases=testcases)
+            response = ListTestcasesResponse(
+                status="ok",
+                request_id=request_id,
+                testcases=testcases,
+            )
+        except ValueError as exc:
+            log.error(f"MCP 列出测试用例参数验证失败: {exc}")
+            payload = build_error_payload(
+                code="MCP_INVALID_PATH",
+                message=str(exc),
+                retryable=False,
+                details={"error_type": "value_error"},
+            )
+            response = ListTestcasesResponse(
+                status="error",
+                request_id=request_id,
+                testcases=[],
+                **payload,
+            )
         except Exception as exc:
             log.error(f"MCP 列出测试用例失败: {exc}")
-            return ListTestcasesResponse(
-                status="error",
-                testcases=[],
-                error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
-                error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
+            payload = build_error_payload(
+                code="MCP_LIST_TESTCASES_ERROR",
+                message=f"未知错误: {type(exc).__name__}: {str(exc)}",
+                retryable=False,
+                details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
             )
+            response = ListTestcasesResponse(
+                status="error",
+                request_id=request_id,
+                testcases=[],
+                **payload,
+            )
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        log_tool_call(
+            "list_testcases",
+            request_id,
+            response.status,
+            latency_ms,
+            response.error_code,
+            meta={"root_path": root_path, "test_type": test_type},
+        )
+        return response
 
     @mcp.tool(
         name="get_testcase",
@@ -134,6 +174,8 @@ def register_testcase_tools(mcp: FastMCP) -> None:
         """获取测试用例内容并校验结构"""
         validation_errors: list[str] = []
         testcase_content: dict[str, Any] | None = None
+        request_id = new_request_id()
+        start_time = time.perf_counter()
 
         try:
             yaml_full_path, yaml_relative_path, _ = resolve_yaml_path(yaml_path, workspace)
@@ -156,39 +198,64 @@ def register_testcase_tools(mcp: FastMCP) -> None:
                 else:
                     testcase_content = raw_data
 
-            return GetTestcaseResponse(
+            response = GetTestcaseResponse(
                 status="ok" if is_valid else "error",
+                request_id=request_id,
                 yaml_path=yaml_relative_path,
                 mode=mode,
                 testcase=testcase_content,
                 is_valid=is_valid,
                 errors=validation_errors,
+                error_code=None if is_valid else "MCP_TESTCASE_INVALID",
+                retryable=False if not is_valid else None,
             )
 
         except ValidationError as exc:
             log.error(f"MCP 获取测试用例参数验证失败: {exc}")
-            return GetTestcaseResponse(
+            payload = build_error_payload(
+                code="MCP_VALIDATION_ERROR",
+                message=f"参数验证失败: {exc}",
+                retryable=False,
+                details={"error_type": "validation_error", "details": format_validation_error(exc)},
+            )
+            response = GetTestcaseResponse(
                 status="error",
+                request_id=request_id,
                 yaml_path=yaml_path,
                 mode=mode,
                 testcase=None,
                 is_valid=False,
                 errors=format_validation_error(exc),
-                error_message=f"参数验证失败: {exc}",
-                error_details={"error_type": "validation_error", "details": format_validation_error(exc)},
+                **payload,
             )
         except Exception as exc:
             log.error(f"MCP 获取测试用例失败: {exc}")
-            return GetTestcaseResponse(
+            payload = build_error_payload(
+                code="MCP_GET_TESTCASE_ERROR",
+                message=f"未知错误: {type(exc).__name__}: {str(exc)}",
+                retryable=False,
+                details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
+            )
+            response = GetTestcaseResponse(
                 status="error",
+                request_id=request_id,
                 yaml_path=yaml_path,
                 mode=mode,
                 testcase=None,
                 is_valid=False,
                 errors=[str(exc)],
-                error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
-                error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
+                **payload,
             )
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        log_tool_call(
+            "get_testcase",
+            request_id,
+            response.status,
+            latency_ms,
+            response.error_code,
+            meta={"yaml_path": yaml_path, "mode": mode},
+        )
+        return response
 
     @mcp.tool(
         name="write_testcase",
@@ -269,6 +336,8 @@ def register_testcase_tools(mcp: FastMCP) -> None:
         dry_run: bool = False,
         workspace: str | None = None,
     ) -> GenerateResponse:
+        request_id = new_request_id()
+        start_time = time.perf_counter()
         try:
             yaml_full_path, yaml_relative_path, repo_root = resolve_yaml_path(yaml_path, workspace)
 
@@ -325,25 +394,42 @@ def register_testcase_tools(mcp: FastMCP) -> None:
             )
 
             if not result["success"]:
-                return GenerateResponse(
+                payload = build_error_payload(
+                    code="MCP_GENERATION_FAILED",
+                    message=str(result.get("error")),
+                    retryable=False,
+                    details={
+                        "error_type": "generation_failed",
+                        "name_mapping": result.get("name_mapping"),
+                        "syntax_errors": result.get("syntax_errors"),
+                    },
+                )
+                response = GenerateResponse(
                     status="error",
+                    request_id=request_id,
                     written_files=[],
                     name_mapping=result.get("name_mapping"),
                     syntax_valid=result.get("syntax_valid"),
                     syntax_errors=result.get("syntax_errors"),
                     code_preview=result.get("code_preview"),
-                    error_message=result.get("error"),
-                    error_details={
-                        "error_type": "generation_failed",
-                        "name_mapping": result.get("name_mapping"),
-                        "syntax_errors": result.get("syntax_errors")
-                    }
+                    **payload,
                 )
+                latency_ms = int((time.perf_counter() - start_time) * 1000)
+                log_tool_call(
+                    "write_testcase",
+                    request_id,
+                    response.status,
+                    latency_ms,
+                    response.error_code,
+                    meta={"yaml_path": yaml_path, "dry_run": dry_run},
+                )
+                return response
 
             py_relative_path = str(Path(result["file_path"]).relative_to(repo_root)) if result["file_path"] else None
 
-            return GenerateResponse(
+            response = GenerateResponse(
                 status="ok",
+                request_id=request_id,
                 written_files=[yaml_relative_path, py_relative_path] if not dry_run else [],
                 name_mapping=result.get("name_mapping"),
                 syntax_valid=result.get("syntax_valid"),
@@ -363,28 +449,56 @@ def register_testcase_tools(mcp: FastMCP) -> None:
                     "step.method 应该是: GET, POST, PUT, DELETE, PATCH 等 HTTP 方法"
                 ]
             }
-            return GenerateResponse(
+            payload = build_error_payload(
+                code="MCP_VALIDATION_ERROR",
+                message=f"参数验证失败: {exc}",
+                retryable=False,
+                details=error_details,
+            )
+            response = GenerateResponse(
                 status="error",
+                request_id=request_id,
                 written_files=[],
-                error_message=f"参数验证失败: {exc}",
-                error_details=error_details
+                **payload,
             )
         except ValueError as exc:
             log.error(f"MCP 写入测试用例业务验证失败: {exc}")
-            return GenerateResponse(
+            payload = build_error_payload(
+                code="MCP_VALUE_ERROR",
+                message=str(exc),
+                retryable=False,
+                details={"error_type": "value_error", "message": str(exc)},
+            )
+            response = GenerateResponse(
                 status="error",
+                request_id=request_id,
                 written_files=[],
-                error_message=str(exc),
-                error_details={"error_type": "value_error", "message": str(exc)}
+                **payload,
             )
         except Exception as exc:
             log.error(f"MCP 写入测试用例失败: {exc}")
-            return GenerateResponse(
-                status="error",
-                written_files=[],
-                error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
-                error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__}
+            payload = build_error_payload(
+                code="MCP_WRITE_TESTCASE_ERROR",
+                message=f"未知错误: {type(exc).__name__}: {str(exc)}",
+                retryable=False,
+                details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
             )
+            response = GenerateResponse(
+                status="error",
+                request_id=request_id,
+                written_files=[],
+                **payload,
+            )
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        log_tool_call(
+            "write_testcase",
+            request_id,
+            response.status,
+            latency_ms,
+            response.error_code,
+            meta={"yaml_path": yaml_path, "dry_run": dry_run},
+        )
+        return response
 
     @mcp.tool(
         name="delete_testcase",
@@ -412,6 +526,8 @@ def register_testcase_tools(mcp: FastMCP) -> None:
         workspace: str | None = None,
     ) -> DeleteTestcaseResponse:
         deleted_files: list[str] = []
+        request_id = new_request_id()
+        start_time = time.perf_counter()
         try:
             yaml_full_path, yaml_relative_path, _ = resolve_yaml_path(yaml_path, workspace)
             if not yaml_full_path.exists():
@@ -428,28 +544,60 @@ def register_testcase_tools(mcp: FastMCP) -> None:
             if delete_py and py_full_path.exists():
                 py_full_path.unlink()
                 deleted_files.append(py_relative_path)
-            return DeleteTestcaseResponse(status="ok", deleted_files=deleted_files)
+            response = DeleteTestcaseResponse(
+                status="ok",
+                request_id=request_id,
+                deleted_files=deleted_files,
+            )
         except ValidationError as exc:
             log.error(f"MCP 删除测试用例参数验证失败: {exc}")
-            return DeleteTestcaseResponse(
+            payload = build_error_payload(
+                code="MCP_VALIDATION_ERROR",
+                message=f"参数验证失败: {exc}",
+                retryable=False,
+                details={"error_type": "validation_error", "details": format_validation_error(exc)},
+            )
+            response = DeleteTestcaseResponse(
                 status="error",
+                request_id=request_id,
                 deleted_files=[],
-                error_message=f"参数验证失败: {exc}",
-                error_details={"error_type": "validation_error", "details": format_validation_error(exc)},
+                **payload,
             )
         except ValueError as exc:
             log.error(f"MCP 删除测试用例业务验证失败: {exc}")
-            return DeleteTestcaseResponse(
+            payload = build_error_payload(
+                code="MCP_VALUE_ERROR",
+                message=str(exc),
+                retryable=False,
+                details={"error_type": "value_error", "message": str(exc)},
+            )
+            response = DeleteTestcaseResponse(
                 status="error",
+                request_id=request_id,
                 deleted_files=[],
-                error_message=str(exc),
-                error_details={"error_type": "value_error", "message": str(exc)},
+                **payload,
             )
         except Exception as exc:
             log.error(f"MCP 删除测试用例失败: {exc}")
-            return DeleteTestcaseResponse(
-                status="error",
-                deleted_files=[],
-                error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
-                error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
+            payload = build_error_payload(
+                code="MCP_DELETE_TESTCASE_ERROR",
+                message=f"未知错误: {type(exc).__name__}: {str(exc)}",
+                retryable=False,
+                details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
             )
+            response = DeleteTestcaseResponse(
+                status="error",
+                request_id=request_id,
+                deleted_files=[],
+                **payload,
+            )
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        log_tool_call(
+            "delete_testcase",
+            request_id,
+            response.status,
+            latency_ms,
+            response.error_code,
+            meta={"yaml_path": yaml_path, "delete_py": delete_py},
+        )
+        return response

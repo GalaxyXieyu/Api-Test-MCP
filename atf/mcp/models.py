@@ -245,6 +245,7 @@ class GenerateResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok", "error"]
+    request_id: str | None = None
     written_files: list[str]
     # 名称转换信息
     name_mapping: dict | None = None  # {"original": "Health Check API", "safe": "health_check_api", "class": "HealthCheckApi"}
@@ -255,6 +256,8 @@ class GenerateResponse(BaseModel):
     dry_run: bool = False
     code_preview: str | None = None  # dry_run 模式下的代码预览
     # 错误信息
+    error_code: str | None = None
+    retryable: bool | None = None
     error_message: str | None = None
     error_details: dict | None = None  # 更详细的错误信息，用于大模型理解
 
@@ -264,10 +267,15 @@ class HealthResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok", "error"]
+    request_id: str | None = None
     version: str
     repo_root: str
     tests_root: str
     test_cases_root: str
+    error_code: str | None = None
+    retryable: bool | None = None
+    error_message: str | None = None
+    error_details: dict | None = None
 
 
 class ListTestcasesResponse(BaseModel):
@@ -275,7 +283,10 @@ class ListTestcasesResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok", "error"]
+    request_id: str | None = None
     testcases: list[str]
+    error_code: str | None = None
+    retryable: bool | None = None
     error_message: str | None = None
     error_details: dict | None = None
 
@@ -285,9 +296,12 @@ class ReadTestcaseResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok", "error"]
+    request_id: str | None = None
     yaml_path: str
     mode: Literal["summary", "full"]
     testcase: dict[str, Any] | None
+    error_code: str | None = None
+    retryable: bool | None = None
     error_message: str | None = None
     error_details: dict | None = None
 
@@ -297,11 +311,14 @@ class GetTestcaseResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok", "error"]
+    request_id: str | None = None
     yaml_path: str
     mode: Literal["summary", "full"]
     testcase: dict[str, Any] | None  # 测试用例内容
     is_valid: bool  # 是否通过校验
     errors: list[str]  # 校验错误列表（空表示通过）
+    error_code: str | None = None
+    retryable: bool | None = None
     error_message: str | None = None
     error_details: dict | None = None
 
@@ -311,7 +328,12 @@ class ValidateTestcaseResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok", "error"]
+    request_id: str | None = None
     errors: list[str]
+    error_code: str | None = None
+    retryable: bool | None = None
+    error_message: str | None = None
+    error_details: dict | None = None
 
 
 class RegenerateResponse(BaseModel):
@@ -319,7 +341,10 @@ class RegenerateResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok", "error"]
+    request_id: str | None = None
     written_files: list[str]
+    error_code: str | None = None
+    retryable: bool | None = None
     error_message: str | None = None
     error_details: dict | None = None
 
@@ -329,7 +354,10 @@ class DeleteTestcaseResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok", "error"]
+    request_id: str | None = None
     deleted_files: list[str]
+    error_code: str | None = None
+    retryable: bool | None = None
     error_message: str | None = None
     error_details: dict | None = None
 
@@ -359,6 +387,7 @@ class TestResultModel(BaseModel):
     assertions: list[AssertionResultModel]  # 断言结果列表
     error_message: str | None = None  # 错误信息
     traceback: str | None = None  # 错误堆栈
+    report_path: str | None = None  # HTML 报告路径
 
 
 class RunTestcaseResponse(BaseModel):
@@ -366,10 +395,13 @@ class RunTestcaseResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok", "error"]
+    request_id: str | None = None
     test_name: str
     yaml_path: str | None = None
     py_path: str | None = None
     result: TestResultModel | None = None
+    error_code: str | None = None
+    retryable: bool | None = None
     error_message: str | None = None
     error_details: dict | None = None
 
@@ -379,12 +411,17 @@ class BatchRunResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok", "error"]
+    request_id: str | None = None
     total: int  # 总数
     passed: int  # 通过
     failed: int  # 失败
     skipped: int  # 跳过
     duration: float  # 总耗时（秒）
     results: list[TestResultModel]  # 每个测试用例的结果
+    error_code: str | None = None
+    retryable: bool | None = None
+    error_message: str | None = None
+    error_details: dict | None = None
 
 
 class RunTestsResponse(BaseModel):
@@ -392,6 +429,7 @@ class RunTestsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok", "error"]
+    request_id: str | None = None
     mode: Literal["single", "batch"]  # 执行模式
     # 单用例模式字段
     test_name: str | None = None
@@ -405,7 +443,10 @@ class RunTestsResponse(BaseModel):
     skipped: int | None = None
     duration: float | None = None
     results: list[TestResultModel] | None = None
+    has_failures: bool | None = None
     # 错误信息
+    error_code: str | None = None
+    retryable: bool | None = None
     error_message: str | None = None
     error_details: dict | None = None
 
@@ -429,7 +470,32 @@ class GetTestResultsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok", "error"]
+    request_id: str | None = None
     results: list[TestResultHistoryModel]
+    error_code: str | None = None
+    retryable: bool | None = None
+    error_message: str | None = None
+    error_details: dict | None = None
+
+
+class McpMetricsResponse(BaseModel):
+    """MCP 工具调用指标响应"""
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["ok", "error"]
+    request_id: str | None = None
+    total: int | None = None
+    success: int | None = None
+    error: int | None = None
+    success_rate: float | None = None
+    avg_latency_ms: float | None = None
+    p95_latency_ms: float | None = None
+    error_codes: dict[str, int] | None = None
+    window_minutes: int | None = None
+    error_code: str | None = None
+    retryable: bool | None = None
+    error_message: str | None = None
+    error_details: dict | None = None
 
 
 __all__ = [
@@ -462,4 +528,5 @@ __all__ = [
     "RunTestsResponse",
     "TestResultHistoryModel",
     "GetTestResultsResponse",
+    "McpMetricsResponse",
 ]

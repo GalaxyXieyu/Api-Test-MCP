@@ -3,6 +3,8 @@ Unittest Tools
 单元测试工具
 """
 
+import time
+
 from mcp.server.fastmcp import FastMCP
 from pydantic import ValidationError
 
@@ -11,9 +13,12 @@ from atf.mcp.models import GenerateResponse, UnitTestModel
 from atf.mcp.tools.testcase_tools import format_validation_error
 from atf.unit_case_generator import UnitCaseGenerator
 from atf.mcp.utils import (
+    build_error_payload,
     build_unittest_yaml,
     contains_chinese,
     expected_py_path,
+    log_tool_call,
+    new_request_id,
     parse_unittest_input,
     resolve_yaml_path,
     yaml,
@@ -74,6 +79,8 @@ def register_unittest_tools(mcp: FastMCP) -> None:
         overwrite: bool = False,
         workspace: str | None = None,
     ) -> GenerateResponse:
+        request_id = new_request_id()
+        start_time = time.perf_counter()
         try:
             unittest_model = parse_unittest_input(unittest)
 
@@ -113,7 +120,11 @@ def register_unittest_tools(mcp: FastMCP) -> None:
             if not result:
                 raise ValueError("pytest 文件未生成，请检查单元测试数据格式")
 
-            return GenerateResponse(status="ok", written_files=[yaml_relative_path, py_relative_path])
+            response = GenerateResponse(
+                status="ok",
+                request_id=request_id,
+                written_files=[yaml_relative_path, py_relative_path],
+            )
         except ValidationError as exc:
             log.error(f"MCP 写入单元测试参数验证失败: {exc}")
             error_details = {
@@ -126,25 +137,53 @@ def register_unittest_tools(mcp: FastMCP) -> None:
                     "fixtures 格式暂不支持 function 类型，当前仅支持 patch 类型"
                 ]
             }
-            return GenerateResponse(
+            payload = build_error_payload(
+                code="MCP_VALIDATION_ERROR",
+                message=f"参数验证失败: {exc}",
+                retryable=False,
+                details=error_details,
+            )
+            response = GenerateResponse(
                 status="error",
+                request_id=request_id,
                 written_files=[],
-                error_message=f"参数验证失败: {exc}",
-                error_details=error_details
+                **payload,
             )
         except ValueError as exc:
             log.error(f"MCP 写入单元测试业务验证失败: {exc}")
-            return GenerateResponse(
+            payload = build_error_payload(
+                code="MCP_VALUE_ERROR",
+                message=str(exc),
+                retryable=False,
+                details={"error_type": "value_error", "message": str(exc)},
+            )
+            response = GenerateResponse(
                 status="error",
+                request_id=request_id,
                 written_files=[],
-                error_message=str(exc),
-                error_details={"error_type": "value_error", "message": str(exc)}
+                **payload,
             )
         except Exception as exc:
             log.error(f"MCP 写入单元测试失败: {exc}")
-            return GenerateResponse(
-                status="error",
-                written_files=[],
-                error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
-                error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__}
+            payload = build_error_payload(
+                code="MCP_WRITE_UNITTEST_ERROR",
+                message=f"未知错误: {type(exc).__name__}: {str(exc)}",
+                retryable=False,
+                details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
             )
+            response = GenerateResponse(
+                status="error",
+                request_id=request_id,
+                written_files=[],
+                **payload,
+            )
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        log_tool_call(
+            "write_unittest",
+            request_id,
+            response.status,
+            latency_ms,
+            response.error_code,
+            meta={"yaml_path": yaml_path, "overwrite": overwrite},
+        )
+        return response

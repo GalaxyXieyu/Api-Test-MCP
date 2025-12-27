@@ -21,8 +21,11 @@ from atf.mcp.models import (
 )
 from atf.mcp.tools.testcase_tools import format_validation_error
 from atf.mcp.utils import (
+    build_error_payload,
     get_roots,
     load_yaml_file,
+    log_tool_call,
+    new_request_id,
     parse_testcase_input,
     parse_unittest_input,
     resolve_tests_root,
@@ -87,6 +90,8 @@ def register_runner_tools(mcp: FastMCP) -> None:
         """统一执行单个或批量测试用例"""
         # 判断执行模式
         is_single_mode = yaml_path is not None
+        request_id = new_request_id()
+        start_time = time.perf_counter()
 
         try:
             if is_single_mode:
@@ -108,14 +113,30 @@ def register_runner_tools(mcp: FastMCP) -> None:
                 )
 
                 if not py_full_path.exists():
-                    return RunTestsResponse(
+                    payload = build_error_payload(
+                        code="MCP_PYTEST_NOT_FOUND",
+                        message=f"pytest 文件不存在: {py_relative_path}",
+                        retryable=False,
+                        details={"error_type": "file_not_found", "py_path": py_relative_path},
+                    )
+                    response = RunTestsResponse(
                         status="error",
+                        request_id=request_id,
                         mode="single",
                         test_name=test_name,
                         yaml_path=yaml_relative_path,
-                        error_message=f"pytest 文件不存在: {py_relative_path}",
-                        error_details={"error_type": "file_not_found", "py_path": py_relative_path},
+                        **payload,
                     )
+                    latency_ms = int((time.perf_counter() - start_time) * 1000)
+                    log_tool_call(
+                        "run_tests",
+                        request_id,
+                        response.status,
+                        latency_ms,
+                        response.error_code,
+                        meta={"mode": "single", "yaml_path": yaml_path},
+                    )
+                    return response
 
                 result_data = run_pytest(str(py_full_path), repo_root, python_path)
                 result = TestResultModel(
@@ -127,20 +148,23 @@ def register_runner_tools(mcp: FastMCP) -> None:
                     ],
                     error_message=result_data.get("error_message"),
                     traceback=result_data.get("traceback"),
+                    report_path=result_data.get("report_path"),
                 )
 
-                return RunTestsResponse(
+                response = RunTestsResponse(
                     status="ok",
+                    request_id=request_id,
                     mode="single",
                     test_name=test_name,
                     yaml_path=yaml_relative_path,
                     py_path=py_relative_path,
                     result=result,
+                    has_failures=result.status != "passed",
                 )
 
             else:
                 # ========== 批量测试模式 ==========
-                start_time = time.time()
+                batch_start_time = time.time()
                 results = []
 
                 repo_root, _, cases_root, _ = get_roots(workspace)
@@ -156,12 +180,28 @@ def register_runner_tools(mcp: FastMCP) -> None:
                     base_dir = cases_root_resolved
 
                 if not base_dir.exists():
-                    return RunTestsResponse(
-                        status="error",
-                        mode="batch",
-                        error_message=f"目录不存在: {base_dir}",
-                        error_details={"error_type": "directory_not_found", "path": str(base_dir)},
+                    payload = build_error_payload(
+                        code="MCP_DIRECTORY_NOT_FOUND",
+                        message=f"目录不存在: {base_dir}",
+                        retryable=False,
+                        details={"error_type": "directory_not_found", "path": str(base_dir)},
                     )
+                    response = RunTestsResponse(
+                        status="error",
+                        request_id=request_id,
+                        mode="batch",
+                        **payload,
+                    )
+                    latency_ms = int((time.perf_counter() - start_time) * 1000)
+                    log_tool_call(
+                        "run_tests",
+                        request_id,
+                        response.status,
+                        latency_ms,
+                        response.error_code,
+                        meta={"mode": "batch", "root_path": root_path, "test_type": test_type},
+                    )
+                    return response
 
                 yaml_files = list(base_dir.rglob("*.yaml"))
                 filtered_files = []
@@ -199,7 +239,7 @@ def register_runner_tools(mcp: FastMCP) -> None:
                         log.error(f"执行测试用例失败: {yaml_file}: {exc}")
 
                 end_time = time.time()
-                duration = round(end_time - start_time, 2)
+                duration = round(end_time - batch_start_time, 2)
 
                 passed = sum(1 for r in results if r.status == "passed")
                 failed = sum(1 for r in results if r.status == "failed")
@@ -216,8 +256,9 @@ def register_runner_tools(mcp: FastMCP) -> None:
                     test_names=[r.test_name for r in results],
                 )
 
-                return RunTestsResponse(
-                    status="ok" if failed == 0 else "error",
+                response = RunTestsResponse(
+                    status="ok",
+                    request_id=request_id,
                     mode="batch",
                     total=len(results),
                     passed=passed,
@@ -225,24 +266,52 @@ def register_runner_tools(mcp: FastMCP) -> None:
                     skipped=skipped,
                     duration=duration,
                     results=results,
+                    has_failures=failed > 0,
                 )
 
         except ValidationError as exc:
             log.error(f"MCP 执行测试参数验证失败: {exc}")
-            return RunTestsResponse(
+            payload = build_error_payload(
+                code="MCP_VALIDATION_ERROR",
+                message=f"参数验证失败: {exc}",
+                retryable=False,
+                details={"error_type": "validation_error", "details": format_validation_error(exc)},
+            )
+            response = RunTestsResponse(
                 status="error",
+                request_id=request_id,
                 mode="single" if is_single_mode else "batch",
-                error_message=f"参数验证失败: {exc}",
-                error_details={"error_type": "validation_error", "details": format_validation_error(exc)},
+                **payload,
             )
         except Exception as exc:
             log.error(f"MCP 执行测试失败: {exc}")
-            return RunTestsResponse(
-                status="error",
-                mode="single" if is_single_mode else "batch",
-                error_message=f"未知错误: {type(exc).__name__}: {str(exc)}",
-                error_details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
+            payload = build_error_payload(
+                code="MCP_RUN_TESTS_ERROR",
+                message=f"未知错误: {type(exc).__name__}: {str(exc)}",
+                retryable=False,
+                details={"error_type": "unknown_error", "exception_type": type(exc).__name__},
             )
+            response = RunTestsResponse(
+                status="error",
+                request_id=request_id,
+                mode="single" if is_single_mode else "batch",
+                **payload,
+            )
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        log_tool_call(
+            "run_tests",
+            request_id,
+            response.status,
+            latency_ms,
+            response.error_code,
+            meta={
+                "mode": "single" if is_single_mode else "batch",
+                "yaml_path": yaml_path,
+                "root_path": root_path,
+                "test_type": test_type,
+            },
+        )
+        return response
 
     @mcp.tool(
         name="get_test_results",
@@ -261,6 +330,8 @@ def register_runner_tools(mcp: FastMCP) -> None:
         limit: int = 10,
     ) -> GetTestResultsResponse:
         """获取测试执行历史"""
+        request_id = new_request_id()
+        start_time = time.perf_counter()
         try:
             recent = get_history(limit)
 
@@ -278,7 +349,32 @@ def register_runner_tools(mcp: FastMCP) -> None:
                 for item in recent
             ]
 
-            return GetTestResultsResponse(status="ok", results=results)
+            response = GetTestResultsResponse(
+                status="ok",
+                request_id=request_id,
+                results=results,
+            )
         except Exception as exc:
             log.error(f"获取测试执行历史失败: {exc}")
-            return GetTestResultsResponse(status="error", results=[])
+            payload = build_error_payload(
+                code="MCP_GET_RESULTS_ERROR",
+                message=str(exc),
+                retryable=False,
+                details={"error_type": "unknown_error"},
+            )
+            response = GetTestResultsResponse(
+                status="error",
+                request_id=request_id,
+                results=[],
+                **payload,
+            )
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        log_tool_call(
+            "get_test_results",
+            request_id,
+            response.status,
+            latency_ms,
+            response.error_code,
+            meta={"limit": limit},
+        )
+        return response

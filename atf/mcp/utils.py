@@ -6,6 +6,8 @@ MCP Server Utilities
 import json
 import os
 import re
+from datetime import datetime
+import uuid
 from pathlib import Path
 from typing import Any, Literal
 
@@ -31,9 +33,66 @@ SCRIPTS_ROOT = TESTS_ROOT / "scripts"  # 生成的 py 脚本目录
 TEST_CASES_ROOT = SCRIPTS_ROOT
 
 # pytest 执行常量
-PYTEST_TIMEOUT = 300  # 5分钟超时
-MAX_ERROR_LENGTH = 500  # 错误信息最大长度
-MAX_HISTORY_SIZE = 1000  # 历史记录最大条数
+PYTEST_TIMEOUT = int(os.getenv("PYTEST_TIMEOUT", "300"))  # 5分钟超时
+MAX_ERROR_LENGTH = int(os.getenv("MAX_ERROR_LENGTH", "500"))  # 错误信息最大长度
+MAX_HISTORY_SIZE = int(os.getenv("MAX_HISTORY_SIZE", "1000"))  # 历史记录最大条数
+MCP_LOGS_ROOT = Path(os.getenv(
+    "MCP_LOGS_ROOT",
+    str(Path(__file__).resolve().parent.parent / "logs"),
+)).expanduser()
+MCP_CALLS_LOG = Path(os.getenv("MCP_CALLS_LOG", str(MCP_LOGS_ROOT / "mcp_calls.jsonl"))).expanduser()
+MCP_LOG_CALLS_ENABLED = os.getenv("MCP_LOG_CALLS_ENABLED", "1").lower() in {"1", "true", "yes"}
+
+
+def new_request_id() -> str:
+    """生成请求标识，用于关联日志与响应"""
+    return uuid.uuid4().hex[:12]
+
+
+def build_error_payload(
+    code: str,
+    message: str,
+    retryable: bool = False,
+    details: dict | None = None,
+) -> dict[str, Any]:
+    """构建统一错误结构"""
+    return {
+        "error_code": code,
+        "retryable": retryable,
+        "error_message": message,
+        "error_details": details or {},
+    }
+
+
+def log_tool_call(
+    tool_name: str,
+    request_id: str,
+    status: str,
+    latency_ms: int,
+    error_code: str | None = None,
+    meta: dict[str, Any] | None = None,
+) -> None:
+    """记录工具调用日志（JSONL）"""
+    if not MCP_LOG_CALLS_ENABLED:
+        return
+    record = {
+        "timestamp": datetime.now().astimezone().isoformat(),
+        "tool": tool_name,
+        "request_id": request_id,
+        "status": status,
+        "latency_ms": latency_ms,
+    }
+    if error_code:
+        record["error_code"] = error_code
+    if meta:
+        record["meta"] = meta
+
+    try:
+        MCP_LOGS_ROOT.mkdir(parents=True, exist_ok=True)
+        with MCP_CALLS_LOG.open("a", encoding="utf-8") as file:
+            file.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        log.warning(f"MCP 调用日志写入失败: {exc}")
 
 
 def get_roots(workspace: str | None = None) -> tuple[Path, Path, Path, Path]:
@@ -294,7 +353,12 @@ __all__ = [
     "PYTEST_TIMEOUT",
     "MAX_ERROR_LENGTH",
     "MAX_HISTORY_SIZE",
+    "MCP_LOGS_ROOT",
+    "MCP_CALLS_LOG",
     "yaml",
+    "new_request_id",
+    "build_error_payload",
+    "log_tool_call",
     "get_roots",
     "resolve_yaml_path",
     "resolve_tests_root",
